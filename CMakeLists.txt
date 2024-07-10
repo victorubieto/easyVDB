@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.9)
 project(easyVDB VERSION 1.0.0 LANGUAGES CXX)
 
 # Directories
-set(DIR_VDB "${CMAKE_CURRENT_LIST_DIR}/easyVDB")
+set(DIR_VDB "${CMAKE_CURRENT_LIST_DIR}/src")
 
 # enable FetchContent
 include(FetchContent)
