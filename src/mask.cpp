@@ -1,0 +1,81 @@
+#include "mask.h"
+
+#include <string>
+#include <vector>
+#include <bitset>
+
+#include "node.h"
+
+Mask::Mask()
+{
+	targetNode = nullptr; 
+	onCache = -1;
+	offCache = -1;
+	size = 0;
+}
+
+void Mask::read(InternalNode* node)
+{
+	targetNode = node;
+
+	int dim = 1 << targetNode->log2dim;
+	this->size = 1 << (3 * targetNode->log2dim);
+	int wordCount = this->size >> 6;
+
+	onIndexCache.resize(wordCount * 64);
+	for (unsigned int i = 0; i < wordCount * 64; i += 8) {
+		unsigned int byte = targetNode->sharedContext->bufferIterator->readBytes(1);
+		// reverse and "push" to onIndexCache mask 
+		for (unsigned int k = 0; k < 8; k++) {
+			onIndexCache[i+k] = (byte & 0x01);
+			byte = byte >> 1;
+		}
+	}
+
+	this->onCache = countOn();
+	this->offCache = countOff();
+
+	// NOTE Cache mask indices, They don't do anything because no callback?
+	/*this->forEachOn();
+	this->forEachOff();*/
+}
+
+int Mask::countOn()
+{
+	if (onCache != -1) {
+		return onCache;
+	}
+
+	unsigned int count = 0;
+	count = std::count(onIndexCache.begin(), onIndexCache.end(), true);
+
+	return count;
+}
+
+int Mask::countOff()
+{
+	if (offCache != -1) {
+		return offCache;
+	}
+	return size - countOn();
+}
+
+//void Mask::forEachOn()
+//{
+//	// this function does something for each word on cache
+//}
+//
+//void Mask::forEachOff()
+//{
+//	// this function does something for each word off cache
+//}
+
+bool Mask::isOn(int offset)
+{
+	return this->onIndexCache[offset];
+}
+
+bool Mask::isOff(int offset)
+{
+	return !this->onIndexCache[offset];
+}
