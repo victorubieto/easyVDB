@@ -7,7 +7,19 @@ This repository was created using [@mjurczyk](https://github.com/mjurczyk) [repo
 I highly recommend including this library as a submodule in your projects by doing this:
 
 ```bash
-[TODO]
+# In the path of the project where you want to store the external libraries
+git submodule add https://github.com/victorubieto/easyVDB
+
+# Then init and update all the submodules of easyVDB
+git submodule update --init --recursive
+```
+
+Once the library is added as a submodule, you can include it in your project's cmake like this (replace `LIBRARIES_PATH`):
+
+```bash
+# easyVDB
+add_subdirectory(LIBRARIES_PATH/easyVDB)
+target_link_libraries(${PROJECT_NAME} PUBLIC easyVDB)
 ```
 
 ## Functionalities
