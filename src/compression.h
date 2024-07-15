@@ -3,7 +3,7 @@
 #include <iostream>
 
 // Compression
-#include "zlib.h"
+#include "../libraries/martell-zlib/zlib.h"
 
 void uncompressZlib(int64_t input_len, const uint8_t* input, int64_t output_len, uint8_t* output)
 {
