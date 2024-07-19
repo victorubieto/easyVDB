@@ -20,6 +20,7 @@ Once the library is added as a submodule, you can include it in your project's c
 # easyVDB
 add_subdirectory(LIBRARIES_PATH/easyVDB)
 target_link_libraries(${PROJECT_NAME} PUBLIC easyVDB)
+set_property(TARGET easyVDB PROPERTY FOLDER "External/easyVDB")
 ```
 
 ## Functionalities
