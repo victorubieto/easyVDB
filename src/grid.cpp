@@ -4,7 +4,6 @@
 #include <string>
 #include <sstream>
 
-
 #include "accessor.h"
 
 Grid::Grid()
