@@ -4,3 +4,6 @@
 [submodule "libraries/martell-zlib"]
 	path = libraries/martell-zlib
 	url = https://github.com/martell/martell-zlib
+[submodule "libraries/c-blosc"]
+	path = libraries/c-blosc
+	url = https://github.com/Blosc/c-blosc

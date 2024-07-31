@@ -5,6 +5,7 @@
 
 #include "accessor.h"
 #include "compression.h"
+#include "versions.h"
 
 RootNode::RootNode()
 {
@@ -112,7 +113,7 @@ void InternalNode::read(unsigned int _id, glm::vec3 _origin, float _background, 
 	this->total = this->log2dim + sum;
 
 	this->dim = 1 << total;
-	this->numValues = 1 << (3 * this->log2dim);
+	this->numValues = 1 << (3 * this->log2dim); // linear dimension
 	int level = 2 - _depth;
 	int numVoxels = 1 << (3 * total);
 	this->offsetMask = dim - 1;
@@ -145,37 +146,73 @@ void InternalNode::read(unsigned int _id, glm::vec3 _origin, float _background, 
 
 void InternalNode::readValues()
 {
-	oldVersion = *(sharedContext->version) < 222;
+	oldVersion = *(sharedContext->version) < OPENVDB_FILE_VERSION_NODE_MASK_COMPRESSION;
 	useCompression = sharedContext->compression.activeMask;
+	const bool seek = this->values.size() == 0;
 
 	if (isLeaf()) {
 		values = std::vector<float>(valueMask.size, 0.0f);
 
-		for (int i = 0; i < valueMask.size; i++) {
-
-			if (valueMask.countOn() == 0) {
-				return;
-			}
-
-			for (unsigned int j = 0; j < valueMask.onIndexCache.size(); j++) {
-				values[j] = (float)valueMask.onIndexCache[j];
-			}
+		if (valueMask.countOn() == 0) {
+			return;
 		}
+
+		for (int i = 0; i < valueMask.size; i++) {
+			values[i] = (float)valueMask.onIndexCache[i];
+		}
+
 		return;
 	}
 
-	numValues = oldVersion ? childMask.countOff() : numValues;
-	unsigned int metadata = 0x110;
+	int destCount = oldVersion ? childMask.countOff() : numValues;
+	unsigned int metadata = NodeMetaData::NoMaskAndAllVals;
 
-	if (*(sharedContext->version) >= 222u) {
-		metadata = sharedContext->bufferIterator->readBytes(1u);
+	// Get delayed load metadata if it exists
+	//uint64_t leafIndex = 0;
+	//if (seek && this->sharedContext->useDelayedLoadMeta) {
+	//	// leafINndex = meta->leaf();
+	//}
+
+	uint32_t offset = 0;
+	uint32_t num_indices = 0;
+	if (*(sharedContext->version) >= OPENVDB_FILE_VERSION_NODE_MASK_COMPRESSION) {
+		if (seek && !useCompression) {
+			sharedContext->bufferIterator->readBytes(1u); // skip 1 byte
+		}
+		// to do: optimize
+		else if (seek && this->sharedContext->useDelayedLoadMeta) {
+			std::string delayLoadMeta = this->sharedContext->delayedLoadMeta;
+
+			num_indices = static_cast<uint8_t>(delayLoadMeta[offset++]); // number of total leaves
+			num_indices |= static_cast<uint8_t>(delayLoadMeta[offset++]) << 8;
+			num_indices |= static_cast<uint8_t>(delayLoadMeta[offset++]) << 16;
+			num_indices |= static_cast<uint8_t>(delayLoadMeta[offset++]) << 24;
+
+			uint32_t mMask_length = static_cast<uint8_t>(delayLoadMeta[offset++]); // compressed
+			mMask_length |= static_cast<uint8_t>(delayLoadMeta[offset++]) << 8;
+			mMask_length |= static_cast<uint8_t>(delayLoadMeta[offset++]) << 16;
+			mMask_length |= static_cast<uint8_t>(delayLoadMeta[offset++]) << 24;
+
+			uint8_t* mMask = new uint8_t[num_indices];
+			uint8_t* compressedArray = reinterpret_cast<uint8_t*> (delayLoadMeta.data()) + offset;
+			uncompressBlosc(mMask_length, compressedArray, num_indices * sizeof(uint8_t), mMask);
+			offset += mMask_length;
+
+			metadata = mMask[0]; // leafIndex = 0
+
+			sharedContext->bufferIterator->readBytes(1u); // skip 1 byte
+		}
+		else {
+			metadata = sharedContext->bufferIterator->readBytes(1u); // 1 byte
+		}
 	}
 
 	float inactiveVal1 = background;
-	float inactiveVal0 = metadata == 6u ? background : !background;
+	float inactiveVal0 = metadata == NodeMetaData::NoMaskOrInactiveVals ? background : -background;
 
-	if (metadata == 2u || metadata == 4u || metadata == 5u) {
+	if (metadata == NodeMetaData::NoMaskAndOneInactiveVal || metadata == NodeMetaData::MaskAndOneInactiveVal || metadata == NodeMetaData::MaskAndTwoInactiveVals) {
 		std::cout << "[WARN] Unsupported: Compression::readCompressedValues first conditional" << std::endl;
+		// ref: https://github.com/Traverse-Research/vdb-rs/blob/f146fc083a2df19da555b1c976ed8cd6b5498748/src/reader.rs#L324
 		// Read one of at most two distinct inactive values.
 		//     if (seek) {
 		//         is.seekg(/*bytes=*/sizeof(ValueT), std::ios_base::cur);
@@ -190,43 +227,56 @@ void InternalNode::readValues()
 		//             is.read(reinterpret_cast<char*>(&inactiveVal1), /*bytes=*/sizeof(ValueT));
 		//         }
 		//     }
+		assert(false);
 	}
 
-	if (metadata == 3u || metadata == 4u || metadata == 5u) {
-		selectionMask = Mask();
+	selectionMask = Mask(numValues);
+	if (metadata == NodeMetaData::MaskAndNoInactiveVals || metadata == NodeMetaData::MaskAndOneInactiveVal || metadata == NodeMetaData::MaskAndTwoInactiveVals) {
 		selectionMask.read(this);
 	}
 
-	unsigned int tempCount = numValues;
+	unsigned int tempCount = destCount;
+	std::vector<float> tempBuf = values;
 
-	if (useCompression && metadata != 6 && *(sharedContext->version) >= 222u) {
+	if (useCompression && metadata != NodeMetaData::NoMaskAndAllVals && *(sharedContext->version) >= OPENVDB_FILE_VERSION_NODE_MASK_COMPRESSION) {
 		tempCount = valueMask.countOn();
+		if (tempCount != destCount) { // todo: add !seek in the condition
+			// If this node has inactive voxels, allocate a temporary buffer into which to read just the active values.
+			tempBuf.resize(tempCount);
+		}
 	}
 
-	readData(tempCount);
+	readData(seek, offset, num_indices, tempCount); //
 
-	if (useCompression && tempCount != numValues) {
-		std::cout << "[WARN] Unsupported: Inactive values" << std::endl;
+	// https://github.com/AcademySoftwareFoundation/openvdb/blob/aea0f0e022141a32fee66378d1fee53b3a3fbc2e/openvdb/openvdb/io/Compression.h#L569
+	// If mask compression is enabled and the number of active values read into the temp buffer is
+	// smaller than the size of the destination buffer, then there are missing (inactive) values
+	if (useCompression && tempCount != destCount) {
+		// ref: https://github.com/Traverse-Research/vdb-rs/blob/f146fc083a2df19da555b1c976ed8cd6b5498748/src/reader.rs#L369
+		this->values.resize(numValues);
 		// Restore inactive values, using the background value and, if available,
-		//     // the inside/outside mask.  (For fog volumes, the destination buffer is assumed
-		//     // to be initialized to background value zero, so inactive values can be ignored.)
-		//     for (Index destIdx = 0, tempIdx = 0; destIdx < MaskT::SIZE; ++destIdx) {
-		//         if (valueMask.isOn(destIdx)) {
-		//             // Copy a saved active value into this node's buffer.
-		//             destBuf[destIdx] = tempBuf[tempIdx];
-		//             ++tempIdx;
-		//         } else {
-		//             // Reconstruct an unsaved inactive value and copy it into this node's buffer.
-		//             destBuf[destIdx] = (selectionMask.isOn(destIdx) ? inactiveVal1 : inactiveVal0);
-		//         }
-		//     }
+		// the inside/outside mask. (For fog volumes, the destination buffer is assumed
+		// to be initialized to background value zero, so inactive values can be ignored.)
+		for (int32_t destIdx = 0, tempIdx = 0; destIdx < this->childMask.size; destIdx++)
+		{
+			if (valueMask.isOn(destIdx)) {
+				// Copy a saved active value into this node's buffer.
+				this->values[destIdx] = tempBuf[tempIdx];
+				tempIdx++;
+			}
+			else {
+				// Reconstruct an unsaved inactive value and copy it into this node's buffer
+				this->values[destIdx] = selectionMask.isOn(destIdx) ? inactiveVal1 : inactiveVal0;
+			}
+		}
 	}
 
-	// childMask.forEachOn
+	// In case we have a leaf here, end the function
 	if (childMask.countOn() == 0) {
 		return;
 	}
 
+	// Iterate recursively for all the children nodes
 	for (unsigned int j = 0; j < childMask.onIndexCache.size(); j++) {
 		if (childMask.onIndexCache[j]) {
 			int offset = j;
@@ -257,13 +307,55 @@ void InternalNode::readValues()
 	}
 }
 
-void InternalNode::readData(unsigned int tempCount)
+void InternalNode::readData(const bool seek, uint32_t offset, uint32_t num_indices, unsigned int tempCount)
 {
-	if (sharedContext->compression.blosc) {
+	if (sharedContext->useHalf) {
+		if (tempCount < 1) return;
+	}
+
+	if (!seek) {
+		std::cout << "TO DO: seek" << std::endl;
+		assert(false);
+	}
+
+	if (this->sharedContext->useDelayedLoadMeta && seek && useCompression) {
+		// to do: optimize
+		std::string delayLoadMeta = this->sharedContext->delayedLoadMeta;
+
+		uint32_t mCompressedSize_length = static_cast<uint8_t>(delayLoadMeta[offset++]); // length of compressed mCompressedSize vector ()
+		mCompressedSize_length |= static_cast<uint8_t>(delayLoadMeta[offset++]) << 8;
+		mCompressedSize_length |= static_cast<uint8_t>(delayLoadMeta[offset++]) << 16;
+		mCompressedSize_length |= static_cast<uint8_t>(delayLoadMeta[offset++]) << 24;
+
+		if (mCompressedSize_length == 0x7FFFFFFF) { // there is no compressedSize info (check)
+			// to do maybe
+			std::cout << "Unsupported" << std::endl;
+			assert(false);
+		} 
+		else if (mCompressedSize_length == 0) {
+			std::cout << "Unsupported" << std::endl;
+			assert(false);
+		}
+
+		uint8_t* tempCompressedSize = new uint8_t[num_indices * sizeof(int64_t)];
+		uint8_t* compressedArray = reinterpret_cast<uint8_t*> (delayLoadMeta.data()) + offset;
+		uncompressBlosc(mCompressedSize_length, compressedArray, num_indices * sizeof(int64_t), tempCompressedSize);
+		int64_t* mCompressedSize = reinterpret_cast<int64_t*>(tempCompressedSize);
+
+		// size_t compressedSize = metadata->getCompressedSize(metadataOffset);
+		int64_t compressedSize = mCompressedSize[0]; // leafIndex = 0
+
+		sharedContext->bufferIterator->readBytes(compressedSize); // skip compressedSize bytes
+	}
+	else if (sharedContext->compression.blosc) {
 		readCompressedData("blosc");
 	}
 	else if (sharedContext->compression.zlib) {
 		readCompressedData("zlib");
+	}
+	else if (seek) {
+		PrecisionLUT precisionLUT = sharedContext->bufferIterator->floatingPointPrecisionLUT(sharedContext->useHalf ? getPrecisionIdx("half") : sharedContext->valueType);
+		sharedContext->bufferIterator->readBytes(precisionLUT.size * tempCount); // skip as much bytes as size * length of data type
 	}
 	else {
 		for (unsigned int i = 0; i < tempCount; i++) {
@@ -274,16 +366,19 @@ void InternalNode::readData(unsigned int tempCount)
 
 void InternalNode::readCompressedData(std::string codec)
 {
-	int zippedBytesCount = sharedContext->bufferIterator->readBytes(8);
+	long long compressedBytesCount = sharedContext->bufferIterator->readBytes(8);
 
-	if (zippedBytesCount <= 0) {
-		for (int i = 0; i < -zippedBytesCount; i++) {
+	if (compressedBytesCount <= 0) {
+		for (int i = 0; i < -compressedBytesCount;) {
 			this->values.push_back(sharedContext->bufferIterator->readFloat(sharedContext->useHalf ? getPrecisionIdx("half") : sharedContext->valueType));
+
+			PrecisionLUT precisionLUT = sharedContext->bufferIterator->floatingPointPrecisionLUT(sharedContext->useHalf ? getPrecisionIdx("half") : sharedContext->valueType);
+			i += precisionLUT.size;
 		}
 	}
 	else {
-		uint8_t* zippedBytes = sharedContext->bufferIterator->readRawBytes(zippedBytesCount);
-		uint8_t* resultBytes{0};
+		uint8_t* compressedBytes = sharedContext->bufferIterator->readRawBytes(compressedBytesCount);
+		uint8_t* resultBytes{ 0 };
 
 		try {
 			int valueTypeLength = sharedContext->bufferIterator->floatingPointPrecisionLUT(sharedContext->valueType).size;
@@ -292,24 +387,22 @@ void InternalNode::readCompressedData(std::string codec)
 			resultBytes = new uint8_t[outputLength];
 
 			if (codec == "zlib") {
-				uncompressZlib(zippedBytesCount, zippedBytes, outputLength, resultBytes);
+				uncompressZlib(compressedBytesCount, compressedBytes, outputLength, resultBytes);
 			}
-			else if (codec == "blosc")
-			{
-				// TODO: decode codecs blosc, ChildNode.js L237
+			else if (codec == "blosc") {
+				uncompressBlosc(compressedBytesCount, compressedBytes, outputLength, resultBytes);
 			}
-			else
-			{
+			else {
 				std::cout << "[WARN] Unsupported compression codec: " << codec << std::endl;
 			}
 
-			//memcpy(values.data(), resultBytes, outputLength);
 			std::vector<uint8_t> my_vector(&resultBytes[0], &resultBytes[outputLength]);
 			this->values.insert(values.end(), my_vector.begin(), my_vector.end());
 		}
 		catch (const std::exception& e) {
-			std::cout << "[WARN] readZipData uncompress error: " << e.what() << std::endl;
-			// check zippedBytes if fails
+			std::cout << "[WARN] " + codec + " uncompress error: " << e.what() << std::endl;
+			// check compressedBytes if fails
+			assert(false);
 		}
 	}
 }

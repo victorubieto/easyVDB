@@ -5,6 +5,7 @@
 #include <sstream>
 
 #include "accessor.h"
+#include "versions.h"
 
 Grid::Grid()
 {
@@ -14,36 +15,36 @@ Grid::Grid()
 
 void Grid::read()
 {
-	readHeader();
-	std::cout << "Grid buffer position " << gridBufferPosition << " " << sharedContext->bufferIterator->offset << std::endl; // assert
+	readHeader(); // 11 + 30 + 4 + 8 + 8 + 8 = 69 bytes
 
 	if (gridBufferPosition != sharedContext->bufferIterator->offset) {
-		sharedContext->bufferIterator->offset = gridBufferPosition;
+		sharedContext->bufferIterator->offset = gridBufferPosition; // seek to grid
 	}
 
-	readCompression();
-	readMetadata();
+	// Read grid interval
+	readCompression();	// 4 bytes
+	readMetadata();		// 43575 bytes (because of the strange metadata string)
 
-	if (*(sharedContext->version) < 216u) {
-		readTopology();
-		readGridTransform();
-		readBuffers();
+	if (*(sharedContext->version) >= OPENVDB_FILE_VERSION_GRID_INSTANCING) {
+		readGridTransform();	// 28 + 144 = 172 btyes
+		readTopology();			// 
+		readBuffers(); // read tree data
 	}
 	else {
-		readGridTransform();
 		readTopology();
+		readGridTransform();
 		readBuffers();
 	}
 
-	// NOTE Hack to make multi - grid VDBs work without reading leaf values
+	// Hack to make multi - grid VDBs work without reading leaf values
 	sharedContext->bufferIterator->offset = endBufferPosition;
 }
 
 void Grid::readHeader()
 {
-	uniqueName = sharedContext->bufferIterator->readString();
+	uniqueName = sharedContext->bufferIterator->readString(); // "density" are 7 chars, so we read size = 4 bytes (which is 7) + 7 chars = 11 bytes
 	gridName = uniqueName.substr(0, uniqueName.find("\x1e"));
-	gridType = sharedContext->bufferIterator->readString();
+	gridType = sharedContext->bufferIterator->readString(); // "Tree_float_5_4_3_HalfFloat" are 26 + 4 of size = 30 bytes
 	if (gridType.find(halfFloatGridPrefix) != -1) {
 		// TODO in case it contains half floats
 		saveAsHalfFloat = true;
@@ -52,21 +53,24 @@ void Grid::readHeader()
 		//gridType = gridType.split(halfFloatGridPrefix).join("");
 	}
 
-	if (*(sharedContext->version) >= 216u) {
-		instanceParentName = sharedContext->bufferIterator->readString();
+	if (*(sharedContext->version) >= OPENVDB_FILE_VERSION_GRID_INSTANCING) {
+		instanceParentName = sharedContext->bufferIterator->readString(); // 0, so 4 bytes
+	}
+	else {
+		//todo!("instance_parent, file version: {}", header.file_version)
 	}
 
-	// NOTE Buffer offset at which grid description ends
-	gridBufferPosition = sharedContext->bufferIterator->readFloat(int64Type);
-	// NOTE Buffer offset at which grid blocks end
-	blockBufferPosition = sharedContext->bufferIterator->readFloat(int64Type);
-	// NOTE Buffer offset at which the file ends
-	endBufferPosition = sharedContext->bufferIterator->readFloat(int64Type);
+	// Buffer offset at which grid description ends
+	gridBufferPosition = sharedContext->bufferIterator->readFloat(int64Type); // 8 bytes (is 134, which is the offset two 8 bytes more from here)
+	// Buffer offset at which grid blocks end
+	blockBufferPosition = sharedContext->bufferIterator->readFloat(int64Type); // 8 bytes (1.011.285)
+	// Buffer offset at which the file ends
+	endBufferPosition = sharedContext->bufferIterator->readFloat(int64Type); // 8 bytes (12.340.550, exactly the size of the file, because 1 grid)
 }
 
 void Grid::readCompression()
 {
-	if (*(sharedContext->version) >= 222u) {
+	if (*(sharedContext->version) >= OPENVDB_FILE_VERSION_NODE_MASK_COMPRESSION) {
 		unsigned int compress = sharedContext->bufferIterator->readBytes(uint32Size);
 		sharedContext->compression.none = compress & 0x0;
 		sharedContext->compression.zlib = compress & 0x1;
@@ -77,20 +81,26 @@ void Grid::readCompression()
 		// NOTE Use inherited compression instead
 		// TODO ??
 	}
-
 }
 
 void Grid::readMetadata()
 {
-	unsigned int metadataSize = sharedContext->bufferIterator->readBytes(uint32Size);
+	unsigned int metadataSize = sharedContext->bufferIterator->readBytes(uint32Size);	// 4 bytes (we will have 11 entries)
 	for (int i = 0; i < metadataSize; i++) {
-		std::string name = sharedContext->bufferIterator->readString();
-		std::string type = sharedContext->bufferIterator->readString();
-		std::string value = sharedContext->bufferIterator->readString(type);
+		std::string name = sharedContext->bufferIterator->readString();					// 9 + 17 + 17 + 20 + 21 + 18 + 20 + 26 + 8 + 19 + 12 = 187 bytes
+		std::string type = sharedContext->bufferIterator->readString();					// 10 + 9 + 9 + 10 + 17 + 9 + 9 + 8 + 10 + 9 + 9 = 109 bytes
+		std::string value = sharedContext->bufferIterator->readString(type);			// 11 + 16 + 16 + 25 + 43151 + 12 + 12 + 5 + 11 + 8 + 8 = 43275 bytes
+
+		if (name == "file_delayed_load")
+		{
+			sharedContext->useDelayedLoadMeta = true;
+			sharedContext->delayedLoadMeta = value;
+		}
 
 		metadata.push_back(Metadata(name, type, value));
 	}
 
+	// todo check
 	if (*(sharedContext->version) < 219u) {
 		for (int i = 0; i < metadataSize; i++) {
 			if (metadata[i].name == "name")
@@ -103,13 +113,13 @@ void Grid::readGridTransform()
 {
 	//transform = new Transform(); // already in the constructor
 
-	transform->mapType = sharedContext->bufferIterator->readString();
+	transform->mapType = sharedContext->bufferIterator->readString(); // 28 bytes
 	if (*(sharedContext->version) < 219u) {
 		std::cout << "[WARN] GridDescriptor::getGridTransform old - style transforms currently not supported. Fallback to identity transform." << std::endl;
 		return;
 	}
 
-	if (transform->mapType == uniformScaleTranslateMap || transform->mapType == scaleTranslateMap) {
+	if (transform->mapType == uniformScaleTranslateMap || transform->mapType == scaleTranslateMap) { // 144 bytes
 		transform->translation = sharedContext->bufferIterator->readVector3();
 		transform->scale = sharedContext->bufferIterator->readVector3();
 		transform->voxelSize = sharedContext->bufferIterator->readVector3();
@@ -136,21 +146,21 @@ void Grid::readGridTransform()
 		std::cout << "[WARN] Unsupported: GridDescriptor::NonlinearFrustumMap" << std::endl;
 	}
 	else {
-		// NOTE Support for any magical map types from https://github.com/AcademySoftwareFoundation/openvdb/blob/master/openvdb/openvdb/math/Maps.h#L538 to be added
+		// Support for any magical map types from https://github.com/AcademySoftwareFoundation/openvdb/blob/master/openvdb/openvdb/math/Maps.h#L538 to be added
 		std::cout << "[WARN] Unsupported: GridDescriptor::Matrix4x4" << std::endl;
 		// 4x4 transformation matrix
 	}
 
-	// NOTE Trigger cache // Do I need to do this?????
+	// Trigger cache // Do I need to do this?????
 	//this.applyTransformMap(new Vector3());
 }
 
-void Grid::readTopology()
+void Grid::readTopology() // in implosion vdb here we are in offset 43885
 {
 	sharedContext->useHalf = saveAsHalfFloat;
 	sharedContext->valueType = getGridValueType();
 
-	unsigned int topologyBufferCount = sharedContext->bufferIterator->readBytes(uint32Size);
+	unsigned int topologyBufferCount = sharedContext->bufferIterator->readBytes(uint32Size); // 4 bytes
 	if (topologyBufferCount != 1) {
 		// NOTE https://github.com/AcademySoftwareFoundation/openvdb/blob/master/openvdb/openvdb/tree/Tree.h#L1120
 		std::cout << "[WARN] Unsupported: Multi-buffer trees" << std::endl;
@@ -222,12 +232,15 @@ Bbox Grid::getPreciseWorldBbox()
 Precision Grid::getGridValueType()
 {
 	for (unsigned int i = 0; i < metadata.size(); i++) {
+		/*if (metadata[i].name == "is_saved_as_half_float") {
+			return getPrecisionIdx("half");
+		}*/
 		if (metadata[i].name == "value_type") {
 			return getPrecisionIdx(metadata[i].value);
 		}
 	}
 
-	std::cout << "[WARN] Precision type not found in the metadata, setting it to as floats" << std::endl;
+	std::cout << "[WARN] Precision type not found in the metadata, setting it as float" << std::endl;
 	return floatType; // undefined pr floatType or "float"
 }
 

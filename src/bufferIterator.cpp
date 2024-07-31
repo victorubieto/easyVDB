@@ -14,12 +14,12 @@ BufferIterator::BufferIterator(std::vector<uint8_t> source, unsigned int offset)
 }
 
 // reads the N bytes sended and erases the N first values of the buffer
-int BufferIterator::readBytes(unsigned int count)
+long long BufferIterator::readBytes(unsigned int count) // right now, max 8 bytes
 {
-	unsigned int buffer = 0u;
+	long long buffer = 0;
 
-	for (unsigned int i = 0u; i < count; i++) {
-		buffer = buffer | (rawBuffer[offset + i] << (8u * i));
+	for (long long i = 0; i < count; i++) {
+		buffer = buffer | (static_cast<long long>(rawBuffer[offset + i]) << (8 * i));
 	}
 
 	offset += count;
@@ -50,64 +50,106 @@ float BufferIterator::readFloat(unsigned int precision)
 	if (precision == vec3sType || precision == vec3iType || precision == vec3dType) {
 		// TODO
 		// ..
-		int a = 0;
+		printf("Precision vec3 still not supported");
+		assert(false);
 	}
 
 	if (precisionLUT.size == NULL) {
 		std::cout << "[WARN] Unknown value type " << getPrecisionString(precision) << std::endl;
 	}
 
-	std::string binary = "";
-	for (unsigned int i = 0u; i < precisionLUT.size; i++) {
-		unsigned int bin = readBytes(charSize);
-		std::string s = std::bitset< 8 >(bin).to_string();
-		binary = s + binary;
-	}
-
+	
 	if (precision == int32Type || precision == int64Type) {
+
+		std::string binary = "";
+		for (unsigned int i = 0u; i < precisionLUT.size; i++) {
+			unsigned int bin = readBytes(charSize);
+			std::string s = std::bitset< 8 >(bin).to_string();
+			binary = s + binary;
+		}
+
 		// NOTE https://stackoverflow.com/questions/37022434/how-do-i-parse-a-twos-complement-string-to-a-number
 		// also this https://stackoverflow.com/questions/29931827/stoi-causes-out-of-range-error
 		return (int)~~std::stoll(binary, nullptr, 2);
 	}
 
-	int sign = binary[0] == (char)"1" ? -1 : 1;
-
-	int exponent = std::stoi(std::string(&binary[1], &binary[precisionLUT.exp + 1]), nullptr, 2) - precisionLUT.bias;
-	std::string mantissa = "1" + std::string(&binary[precisionLUT.exp + 1], &binary[binary.size()]);
-
-	// NOTE https://stackoverflow.com/questions/37109968/how-to-convert-binary-fraction-to-decimal
-	std::string v1_string = exponent < 0 ? "0.0" : std::string(&mantissa[0], &mantissa[exponent + 1]);
-	std::string aux_v2_string = "";
-	for (int i = 0; i < (-exponent - 1); i++) {
-		aux_v2_string += "0";
-	}
-	std::string v2_string = 
-		"0." + 
-		aux_v2_string + 
-		std::string(exponent < 0 ? &mantissa[0] : &mantissa[exponent + 1], &mantissa[mantissa.size()]);
-
-	int v1 = std::stoi(v1_string, nullptr, 2);
-	// TODO: Clean :) optimize
-	std::string aux2_v2_string = v2_string;
-	aux2_v2_string.erase(remove(aux2_v2_string.begin(), aux2_v2_string.end(), '.'), aux2_v2_string.end());
-	std::stringstream test(v2_string);
-	std::string aux3_v2_string;
-	std::vector<std::string> v2_seglist;
-	while (std::getline(test, aux3_v2_string, '.'))
+	else if (precision == halfFloatType)
 	{
-		v2_seglist.push_back(aux3_v2_string);
+		unsigned short raw = readBytes(charSize);
+		raw |= static_cast<unsigned short>(readBytes(charSize)) << 8;
+		return half_to_float(raw);
 	}
-	int v2_len = (v2_seglist.size() > 1 ? v2_seglist[1] : std::string("")).size();
-	double v2_len_p2 = pow(2, v2_len);
-	double v2_toNumber = std::stoll(aux2_v2_string, nullptr, 2);
-	double v2 = v2_toNumber / v2_len_p2;
-	//
+	else if (precision == floatType)
+	{
+		unsigned int raw = readBytes(charSize);
+		raw |= static_cast<unsigned short>(readBytes(charSize)) << 8;
+		raw |= static_cast<unsigned short>(readBytes(charSize)) << 16;
+		raw |= static_cast<unsigned short>(readBytes(charSize)) << 24;
+		return as_float(raw);
+	} 
+	else if (precision == doubleType)
+	{
+		// TO DO
+		// .. we need to return a double somehow
 
-	if (v1 == 0 && v2 == 0) {
-		return 0;
+		/*printf("Precision double still not supported");
+		assert(false);*/
+
+		/*union {
+			unsigned char uint8;
+			unsigned short uint16;
+			unsigned int uint32;
+			unsigned long long uint64;
+			float float32;
+			double float64;
+		};*/
+
+		std::string binary = "";
+		for (unsigned int i = 0u; i < precisionLUT.size; i++) {
+			unsigned int bin = readBytes(charSize);
+			std::string s = std::bitset< 8 >(bin).to_string();
+			binary = s + binary;
+		}
+
+		int sign = binary[0] == (char)"1" ? -1 : 1;
+
+		int exponent = std::stoi(std::string(&binary[1], &binary[precisionLUT.exp + 1]), nullptr, 2) - precisionLUT.bias;
+		std::string mantissa = "1" + std::string(&binary[precisionLUT.exp + 1], &binary[binary.size()]);
+
+		// NOTE https://stackoverflow.com/questions/37109968/how-to-convert-binary-fraction-to-decimal
+		std::string v1_string = exponent < 0 ? "0.0" : std::string(&mantissa[0], &mantissa[exponent + 1]);
+		std::string aux_v2_string = "";
+		for (int i = 0; i < (-exponent - 1); i++) {
+			aux_v2_string += "0";
+		}
+		std::string v2_string = 
+			"0." + 
+			aux_v2_string + 
+			std::string(exponent < 0 ? &mantissa[0] : &mantissa[exponent + 1], &mantissa[mantissa.size()]);
+
+		int v1 = std::stoi(v1_string, nullptr, 2);
+		// TODO: Clean :) optimize
+		std::string aux2_v2_string = v2_string;
+		aux2_v2_string.erase(remove(aux2_v2_string.begin(), aux2_v2_string.end(), '.'), aux2_v2_string.end());
+		std::stringstream test(v2_string);
+		std::string aux3_v2_string;
+		std::vector<std::string> v2_seglist;
+		while (std::getline(test, aux3_v2_string, '.'))
+		{
+			v2_seglist.push_back(aux3_v2_string);
+		}
+		int v2_len = (v2_seglist.size() > 1 ? v2_seglist[1] : std::string("")).size();
+		double v2_len_p2 = pow(2, v2_len);
+		double v2_toNumber = std::stoll(aux2_v2_string, nullptr, 2);
+		double v2 = v2_toNumber / v2_len_p2;
+		//
+
+		if (v1 == 0 && v2 == 0) {
+			return 0;
+		}
+
+		return sign * (v1 + v2);
 	}
-
-	return sign * (v1 + v2);
 }
 
 std::string BufferIterator::readString(unsigned int castTo)
@@ -153,7 +195,10 @@ std::string BufferIterator::readString(std::string castTo)
 	unsigned int nameSize = readBytes(uint32Size);
 	std::string name = "";
 
-	if (castTo == getPrecisionString(int64Type)) {
+	if (castTo == getPrecisionString(int32Type)) {
+		name = std::to_string(readFloat(int32Type));
+	}
+	else if (castTo == getPrecisionString(int64Type)) {
 		name = std::to_string(readFloat(int64Type));
 	}
 	else if (castTo == getPrecisionString(boolType)) {

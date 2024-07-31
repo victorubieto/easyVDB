@@ -4,6 +4,7 @@
 
 // Compression
 #include "../libraries/martell-zlib/zlib.h"
+#include "../libraries/c-blosc/blosc/blosc.h"
 
 void uncompressZlib(int64_t input_len, const uint8_t* input, int64_t output_len, uint8_t* output)
 {
@@ -40,4 +41,15 @@ void uncompressZlib(int64_t input_len, const uint8_t* input, int64_t output_len,
         return;
     }
     return;
+}
+
+void uncompressBlosc(int64_t input_len, const uint8_t* input, int64_t output_len, uint8_t* output)
+{
+    uint8_t result = blosc_decompress(input, output, output_len);
+    if (result < 0) {
+        printf("[ERROR] Decompression error. Error code: %d\n", result);
+    }
+
+    /* After using it, destroy the Blosc environment */
+    blosc_destroy();
 }

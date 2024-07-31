@@ -43,12 +43,15 @@ public:
 		}
 		else if (this->mapType == unitaryMap) {
 			std::cout << "[WARN] Unsupported: Grid type UnitaryMap" << std::endl;
+			assert(false);
 		}
 		else if (this->mapType == nonlinearFrustumMap) {
 			std::cout << "[WARN] Unsupported: Grid type NonLinearFrustumMap" << std::endl;
+			assert(false);
 		}
 		else {
 			std::cout << "[WARN] Unsupported: Grid type matrix4x4" << std::endl;
+			assert(false);
 		}
 	};
 
@@ -65,12 +68,15 @@ public:
 		}
 		else if (this->mapType == unitaryMap) {
 			std::cout << "[WARN] Unsupported: Grid type UnitaryMap" << std::endl;
+			assert(false);
 		}
 		else if (this->mapType == nonlinearFrustumMap) {
 			std::cout << "[WARN] Unsupported: Grid type NonLinearFrustumMap" << std::endl;
+			assert(false);
 		}
 		else {
 			std::cout << "[WARN] Unsupported: Grid type Matrix4x4" << std::endl;
+			assert(false);
 		}
 	}
 };

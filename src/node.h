@@ -49,7 +49,7 @@ public:
 
 	void read(unsigned int id, glm::vec3 origin, float background, unsigned int depth = 0);
 	void readValues();
-	void readData(unsigned int tempCount);
+	void readData(const bool seek, uint32_t offset, uint32_t num_indices, unsigned int tempCount);
 	void readCompressedData(std::string codec);
 
 	glm::vec3 traverseOffset(InternalNode* node);

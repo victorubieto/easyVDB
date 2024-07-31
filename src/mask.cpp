@@ -14,6 +14,18 @@ Mask::Mask()
 	size = 0;
 }
 
+Mask::Mask(const int _size)
+{
+	targetNode = nullptr;
+	onCache = -1;
+	offCache = -1;
+	size = 0;
+	
+	onIndexCache.resize(_size);
+	uint8_t* ptr = onIndexCache.data();
+	memset(ptr, 0, _size * sizeof(uint8_t));
+}
+
 void Mask::read(InternalNode* node)
 {
 	targetNode = node;

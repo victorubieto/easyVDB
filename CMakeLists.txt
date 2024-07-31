@@ -34,6 +34,15 @@ if(EXISTS ${VDB_DIR_LIBS}/martell-zlib/zconf.h.included)
     file(RENAME ${VDB_DIR_LIBS}/martell-zlib/zconf.h.included ${VDB_DIR_LIBS}/martell-zlib/zconf.h)
 endif()
 
+# blosc
+set(BUILD_TESTS OFF CACHE BOOL "")
+set(BUILD_SHARED OFF CACHE BOOL "")
+set(BUILD_FUZZERS OFF CACHE BOOL "")
+set(BUILD_BENCHMARKS OFF CACHE BOOL "")
+add_subdirectory(libraries/c-blosc)
+target_link_libraries(${PROJECT_NAME} PUBLIC blosc_static)
+set_property(TARGET blosc_static PROPERTY FOLDER "External/blosc")
+
 # glm
 if (NOT TARGET glm)
     add_subdirectory(libraries/glm)

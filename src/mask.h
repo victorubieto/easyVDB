@@ -19,6 +19,7 @@ public:
 	std::vector<uint8_t> onIndexCache; // this is a bool list
 
 	Mask();
+	Mask(const int _size);
 
 	void read(InternalNode* node);
 	int countOn();
