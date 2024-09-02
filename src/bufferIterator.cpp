@@ -43,6 +43,53 @@ bool BufferIterator::readBool()
 	return readBytes(boolSize) ? "true" : "false";
 }
 
+long long BufferIterator::readInt(unsigned int precision)
+{
+	PrecisionLUT precisionLUT = floatingPointPrecisionLUT(precision);
+
+	if (precision == vec3sType || precision == vec3iType || precision == vec3dType) {
+		// TODO
+		// ..
+		printf("Precision vec3 still not supported");
+		assert(false);
+	}
+
+	if (precisionLUT.size == NULL) {
+		std::cout << "[WARN] Unknown value type " << getPrecisionString(precision) << std::endl;
+	}
+
+	if (precision == int32Type) {
+		uint32_t temp;
+
+		temp = (uint32_t)rawBuffer[offset];
+		temp |= (uint32_t)rawBuffer[offset + 1] << 8;
+		temp |= (uint32_t)rawBuffer[offset + 2] << 16;
+		temp |= (uint32_t)rawBuffer[offset + 3] << 24;
+
+		offset += precisionLUT.size;
+		long long val = hexToDec(std::to_string(temp));
+
+		return val;
+	}
+	else if (precision == int64Type) {
+		uint64_t temp;
+
+		temp = (uint64_t)rawBuffer[offset];
+		temp |= (uint64_t)rawBuffer[offset + 1] << 8;
+		temp |= (uint64_t)rawBuffer[offset + 2] << 16;
+		temp |= (uint64_t)rawBuffer[offset + 3] << 24;
+		temp |= (uint64_t)rawBuffer[offset + 4] << 32;
+		temp |= (uint64_t)rawBuffer[offset + 5] << 40;
+		temp |= (uint64_t)rawBuffer[offset + 6] << 48;
+		temp |= (uint64_t)rawBuffer[offset + 7] << 56;
+
+		offset += precisionLUT.size;
+		long long val = stoll(std::to_string(temp), nullptr);
+
+		return val;
+	}
+}
+
 float BufferIterator::readFloat(unsigned int precision)
 {
 	PrecisionLUT precisionLUT = floatingPointPrecisionLUT(precision);
@@ -58,7 +105,6 @@ float BufferIterator::readFloat(unsigned int precision)
 		std::cout << "[WARN] Unknown value type " << getPrecisionString(precision) << std::endl;
 	}
 
-	
 	if (precision == int32Type || precision == int64Type) {
 
 		std::string binary = "";
@@ -72,7 +118,6 @@ float BufferIterator::readFloat(unsigned int precision)
 		// also this https://stackoverflow.com/questions/29931827/stoi-causes-out-of-range-error
 		return (int)~~std::stoll(binary, nullptr, 2);
 	}
-
 	else if (precision == halfFloatType)
 	{
 		unsigned short raw = readBytes(charSize);

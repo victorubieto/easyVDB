@@ -15,7 +15,7 @@ Grid::Grid()
 
 void Grid::read()
 {
-	readHeader(); // 11 + 30 + 4 + 8 + 8 + 8 = 69 bytes
+	readHeader();
 
 	if (gridBufferPosition != sharedContext->bufferIterator->offset) {
 		sharedContext->bufferIterator->offset = gridBufferPosition; // seek to grid
@@ -23,11 +23,11 @@ void Grid::read()
 
 	// Read grid interval
 	readCompression();	// 4 bytes
-	readMetadata();		// 43575 bytes (because of the strange metadata string)
+	readMetadata();
 
 	if (*(sharedContext->version) >= OPENVDB_FILE_VERSION_GRID_INSTANCING) {
-		readGridTransform();	// 28 + 144 = 172 btyes
-		readTopology();			// 
+		readGridTransform();
+		readTopology();
 		readBuffers(); // read tree data
 	}
 	else {
@@ -42,14 +42,14 @@ void Grid::read()
 
 void Grid::readHeader()
 {
-	uniqueName = sharedContext->bufferIterator->readString(); // "density" are 7 chars, so we read size = 4 bytes (which is 7) + 7 chars = 11 bytes
+	uniqueName = sharedContext->bufferIterator->readString();
 	gridName = uniqueName.substr(0, uniqueName.find("\x1e"));
-	gridType = sharedContext->bufferIterator->readString(); // "Tree_float_5_4_3_HalfFloat" are 26 + 4 of size = 30 bytes
+	gridType = sharedContext->bufferIterator->readString();
 	if (gridType.find(halfFloatGridPrefix) != -1) {
 		// TODO in case it contains half floats
 		saveAsHalfFloat = true;
 		char* ptr;
-		ptr = strtok((char*)gridType.data(), halfFloatGridPrefix.data());
+		//ptr = strtok((char*)gridType.data(), halfFloatGridPrefix.data());
 		//gridType = gridType.split(halfFloatGridPrefix).join("");
 	}
 
@@ -61,11 +61,11 @@ void Grid::readHeader()
 	}
 
 	// Buffer offset at which grid description ends
-	gridBufferPosition = sharedContext->bufferIterator->readFloat(int64Type); // 8 bytes (is 134, which is the offset two 8 bytes more from here)
+	gridBufferPosition = sharedContext->bufferIterator->readInt(int64Type); // 8 bytes
 	// Buffer offset at which grid blocks end
-	blockBufferPosition = sharedContext->bufferIterator->readFloat(int64Type); // 8 bytes (1.011.285)
+	blockBufferPosition = sharedContext->bufferIterator->readInt(int64Type);
 	// Buffer offset at which the file ends
-	endBufferPosition = sharedContext->bufferIterator->readFloat(int64Type); // 8 bytes (12.340.550, exactly the size of the file, because 1 grid)
+	endBufferPosition = sharedContext->bufferIterator->readInt(int64Type);
 }
 
 void Grid::readCompression()
