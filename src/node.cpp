@@ -7,6 +7,8 @@
 #include "compression.h"
 #include "versions.h"
 
+using namespace easyVDB;
+
 RootNode::RootNode()
 {
 	origin = glm::vec3(0.0f);

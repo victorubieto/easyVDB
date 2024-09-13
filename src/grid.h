@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <string>
+#include <iostream>
 
 #include <glm/vec3.hpp>
 #include <glm/common.hpp>
@@ -9,118 +10,123 @@
 #include "node.h"
 #include "bbox.h"
 
-const std::string uniformScaleTranslateMap = "UniformScaleTranslateMap";
-const std::string scaleTranslateMap = "ScaleTranslateMap";
-const std::string uniformScaleMap = "UniformScaleMap";
-const std::string scaleMap = "ScaleMap";
-const std::string translationMap = "TranslationMap";
-const std::string unitaryMap = "UnitaryMap";
-const std::string nonlinearFrustumMap = "NonlinearFrustumMap";
+namespace easyVDB
+{
 
-class VDB_Transform {
-public:
+	const std::string uniformScaleTranslateMap = "UniformScaleTranslateMap";
+	const std::string scaleTranslateMap = "ScaleTranslateMap";
+	const std::string uniformScaleMap = "UniformScaleMap";
+	const std::string scaleMap = "ScaleMap";
+	const std::string translationMap = "TranslationMap";
+	const std::string unitaryMap = "UnitaryMap";
+	const std::string nonlinearFrustumMap = "NonlinearFrustumMap";
 
-	// transformMap
-	std::string mapType;
-	glm::vec3 translation;
-	glm::vec3 scale;
-	glm::vec3 voxelSize;
-	glm::vec3 scaleInverse;
-	glm::vec3 scaleInverseSq;
-	glm::vec3 scaleInverseDouble;
+	class VDB_Transform {
+	public:
 
-	VDB_Transform();
+		// transformMap
+		std::string mapType;
+		glm::vec3 translation;
+		glm::vec3 scale;
+		glm::vec3 voxelSize;
+		glm::vec3 scaleInverse;
+		glm::vec3 scaleInverseSq;
+		glm::vec3 scaleInverseDouble;
 
-	void applyTransformMap(glm::vec3& vector) {
-		if (this->mapType == uniformScaleTranslateMap || this->mapType == scaleTranslateMap) {
-			vector = vector * this->scale;
-		}
-		else if (this->mapType == uniformScaleMap || this->mapType == scaleMap) {
-			vector = vector * this->scale + this->translation; // check the operation order
-		}
-		else if (this->mapType == translationMap) {
-			vector = vector + this->translation;
-		}
-		else if (this->mapType == unitaryMap) {
-			std::cout << "[WARN] Unsupported: Grid type UnitaryMap" << std::endl;
-			assert(false);
-		}
-		else if (this->mapType == nonlinearFrustumMap) {
-			std::cout << "[WARN] Unsupported: Grid type NonLinearFrustumMap" << std::endl;
-			assert(false);
-		}
-		else {
-			std::cout << "[WARN] Unsupported: Grid type matrix4x4" << std::endl;
-			assert(false);
+		VDB_Transform();
+
+		void applyTransformMap(glm::vec3& vector) {
+			if (this->mapType == uniformScaleTranslateMap || this->mapType == scaleTranslateMap) {
+				vector = vector * this->scale;
+			}
+			else if (this->mapType == uniformScaleMap || this->mapType == scaleMap) {
+				vector = vector * this->scale + this->translation; // check the operation order
+			}
+			else if (this->mapType == translationMap) {
+				vector = vector + this->translation;
+			}
+			else if (this->mapType == unitaryMap) {
+				std::cout << "[WARN] Unsupported: Grid type UnitaryMap" << std::endl;
+				assert(false);
+			}
+			else if (this->mapType == nonlinearFrustumMap) {
+				std::cout << "[WARN] Unsupported: Grid type NonLinearFrustumMap" << std::endl;
+				assert(false);
+			}
+			else {
+				std::cout << "[WARN] Unsupported: Grid type matrix4x4" << std::endl;
+				assert(false);
+			}
+		};
+
+		void applyInverseTransformMap(glm::vec3& vector) {
+			glm::vec3 result;
+			if (this->mapType == uniformScaleTranslateMap || this->mapType == scaleTranslateMap) {
+				vector = vector * this->scaleInverse;
+			}
+			else if (this->mapType == uniformScaleMap || this->mapType == scaleMap) {
+				vector = vector * this->scaleInverse;
+			}
+			else if (this->mapType == translationMap) {
+				vector = vector - this->translation - this->translation;
+			}
+			else if (this->mapType == unitaryMap) {
+				std::cout << "[WARN] Unsupported: Grid type UnitaryMap" << std::endl;
+				assert(false);
+			}
+			else if (this->mapType == nonlinearFrustumMap) {
+				std::cout << "[WARN] Unsupported: Grid type NonLinearFrustumMap" << std::endl;
+				assert(false);
+			}
+			else {
+				std::cout << "[WARN] Unsupported: Grid type Matrix4x4" << std::endl;
+				assert(false);
+			}
 		}
 	};
 
-	void applyInverseTransformMap(glm::vec3& vector) {
-		glm::vec3 result;
-		if (this->mapType == uniformScaleTranslateMap || this->mapType == scaleTranslateMap) {
-			vector = vector * this->scaleInverse;
-		}
-		else if (this->mapType == uniformScaleMap || this->mapType == scaleMap) {
-			vector = vector * this->scaleInverse;
-		}
-		else if (this->mapType == translationMap) {
-			vector = vector - this->translation - this->translation;
-		}
-		else if (this->mapType == unitaryMap) {
-			std::cout << "[WARN] Unsupported: Grid type UnitaryMap" << std::endl;
-			assert(false);
-		}
-		else if (this->mapType == nonlinearFrustumMap) {
-			std::cout << "[WARN] Unsupported: Grid type NonLinearFrustumMap" << std::endl;
-			assert(false);
-		}
-		else {
-			std::cout << "[WARN] Unsupported: Grid type Matrix4x4" << std::endl;
-			assert(false);
-		}
-	}
-};
+	class Grid {
+	public:
+		SharedContext* sharedContext;
 
-class Grid {
-public:
-	SharedContext* sharedContext;
+		Accessor* accessor;
 
-	Accessor* accessor;
+		std::string halfFloatGridPrefix = "_HalfFloat";
 
-	std::string halfFloatGridPrefix = "_HalfFloat";
+		std::string instanceParentName;
 
-	std::string instanceParentName;
+		bool saveAsHalfFloat = false;
+		unsigned int leavesCount = 0u;
 
-	bool saveAsHalfFloat = false;
-	unsigned int leavesCount = 0u;
+		std::string uniqueName;
+		std::string gridName;
+		std::string gridType;
 
-	std::string uniqueName;
-	std::string gridName;
-	std::string gridType;
+		long long gridBufferPosition;
+		long long blockBufferPosition;
+		long long endBufferPosition;
 
-	unsigned int gridBufferPosition;
-	float blockBufferPosition;
-	float endBufferPosition;
+		//Compression compression;
+		std::vector<Metadata> metadata;
 
-	//Compression compression;
-	std::vector<Metadata> metadata;
+		VDB_Transform* transform;
 
-	VDB_Transform* transform;
+		RootNode root;
 
-	RootNode root;
+		Grid();
 
-	Grid();
+		void read();
+		void readHeader();
+		void readCompression();
+		void readMetadata();
+		void readGridTransform();
+		void readTopology();
+		void readBuffers();
 
-	void read();
-	void readHeader();
-	void readCompression();
-	void readMetadata();
-	void readGridTransform();
-	void readTopology();
-	void readBuffers();
+		float getValue(glm::vec3 pos);
+		std::string getMetadata(std::string s);
+		Bbox getPreciseWorldBbox();
+		Precision getGridValueType();
+	};
 
-	float getValue(glm::vec3 pos);
-	std::string getMetadata(std::string s);
-	Bbox getPreciseWorldBbox();
-	Precision getGridValueType();
-};
+}

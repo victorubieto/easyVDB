@@ -5,6 +5,8 @@
 #include <sstream>
 #include <cmath>
 
+using namespace easyVDB;
+
 BufferIterator::BufferIterator(std::vector<uint8_t> source, unsigned int offset)
 {
 	rawBuffer.resize(source.size());

@@ -7,6 +7,8 @@
 #include "accessor.h"
 #include "versions.h"
 
+using namespace easyVDB;
+
 Grid::Grid()
 {
 	accessor = new Accessor(this);
@@ -25,7 +27,7 @@ void Grid::read()
 	readCompression();	// 4 bytes
 	readMetadata();
 
-	if (*(sharedContext->version) >= OPENVDB_FILE_VERSION_GRID_INSTANCING) {
+if (*(sharedContext->version) >= OPENVDB_FILE_VERSION_GRID_INSTANCING) {
 		readGridTransform();
 		readTopology();
 		readBuffers(); // read tree data

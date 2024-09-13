@@ -3,29 +3,34 @@
 #include <vector>
 #include <string>
 
-// Forward declaration so the compiler knows InternalNode class
-class InternalNode;
+namespace easyVDB
+{
 
-class Mask {
-public:
+	// Forward declaration so the compiler knows InternalNode class
+	class InternalNode;
 
-	InternalNode* targetNode;
-	
-	int size;
-	int onCache;
-	int offCache;
+	class Mask {
+	public:
 
-	std::vector<std::string> words;
-	std::vector<uint8_t> onIndexCache; // this is a bool list
+		InternalNode* targetNode;
 
-	Mask();
-	Mask(const int _size);
+		int size;
+		int onCache;
+		int offCache;
 
-	void read(InternalNode* node);
-	int countOn();
-	int countOff();
-	/*void forEachOn();
-	void forEachOff();*/
-	bool isOn(int offset);
-	bool isOff(int offset);
-};
+		std::vector<std::string> words;
+		std::vector<uint8_t> onIndexCache; // this is a bool list
+
+		Mask();
+		Mask(const int _size);
+
+		void read(InternalNode* node);
+		int countOn();
+		int countOff();
+		/*void forEachOn();
+		void forEachOff();*/
+		bool isOn(int offset);
+		bool isOff(int offset);
+	};
+
+}

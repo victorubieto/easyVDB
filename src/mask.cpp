@@ -6,6 +6,8 @@
 
 #include "node.h"
 
+using namespace easyVDB;
+
 Mask::Mask()
 {
 	targetNode = nullptr; 

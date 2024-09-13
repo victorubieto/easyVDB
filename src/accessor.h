@@ -6,35 +6,40 @@
 #include "node.h"
 #include "grid.h"
 
-class Accessor {
-public:
-	Grid* grid = nullptr;
-	std::vector<InternalNode*> stack;
+namespace easyVDB
+{
 
-	Accessor(Grid* grid) {
-		this->grid = grid;
-	}
+	class Accessor {
+	public:
+		Grid* grid = nullptr;
+		std::vector<InternalNode*> stack;
 
-	float probeValues(glm::ivec3 pos) {
-		if (!this->stack.empty()) {
-			InternalNode* cachedNode = this->stack.back();
-			this->stack.pop_back();
+		Accessor(Grid* grid) {
+			this->grid = grid;
+		}
 
-			if (cachedNode->contains(pos)) {
-				return cachedNode->getValue(pos, this);
+		float probeValues(glm::ivec3 pos) {
+			if (!this->stack.empty()) {
+				InternalNode* cachedNode = this->stack.back();
+				this->stack.pop_back();
+
+				if (cachedNode->contains(pos)) {
+					return cachedNode->getValue(pos, this);
+				}
 			}
-		}
-		else
-		{
-			return this->grid->root.getValue(pos, this);
-		}
+			else
+			{
+				return this->grid->root.getValue(pos, this);
+			}
 
-		return this->probeValues(pos);
+			return this->probeValues(pos);
+		};
+		float getValue(glm::ivec3 pos) {
+			return this->probeValues(pos);
+		};
+		void cache(InternalNode* node) {
+			this->stack.push_back(node);
+		}
 	};
-	float getValue(glm::ivec3 pos) {
-		return this->probeValues(pos);
-	};
-	void cache(InternalNode* node) {
-		this->stack.push_back(node);
-	}
-};
+
+}

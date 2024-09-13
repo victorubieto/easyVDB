@@ -3,6 +3,8 @@
 
 #include "versions.h"
 
+using namespace easyVDB;
+
 OpenVDBReader::OpenVDBReader()
 {
 	this->fileVersion.minor = 0u;
@@ -47,6 +49,7 @@ bool OpenVDBReader::readFileVersion()
 	fileVersion.version = bufferIterator->readBytes(uint32Size);
 
 	if (fileVersion.version < OPENVDB_MIN_SUPPORTED_VERSION) {
+		std::cout << "[INFO] Version '" << fileVersion.version << "' is not supported. The oldest supported version is the '" << OPENVDB_MIN_SUPPORTED_VERSION << "'" << std::endl;
 		return false;
 	}
 

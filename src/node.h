@@ -6,80 +6,85 @@
 #include "mask.h"
 #include "bbox.h"
 
-class Accessor;
+namespace easyVDB
+{
 
-class InternalNode {
-public:
-	SharedContext* sharedContext;
+	class Accessor;
 
-	unsigned int log2dimMap[3] = { 5, 4, 3 };
-	unsigned int totalMap[3] = { 4, 3, 0 };
-	std::string nodeTypeMap[3] = { "internal", "internal", "leaf" };
-	
-	unsigned int leavesCount;
+	class InternalNode {
+	public:
+		SharedContext* sharedContext;
 
-	unsigned int depth;
-	unsigned int id;
-	glm::vec3 origin;
-	float background;
-	int total;
-	unsigned int dim;
-	int offsetMask;
+		unsigned int log2dimMap[3] = { 5, 4, 3 };
+		unsigned int totalMap[3] = { 4, 3, 0 };
+		std::string nodeTypeMap[3] = { "internal", "internal", "leaf" };
 
-	unsigned int log2dim;
-	int numValues;
+		unsigned int leavesCount;
 
-	bool bboxInitialized;
-	Bbox localBbox;
+		unsigned int depth;
+		unsigned int id;
+		glm::vec3 origin;
+		float background;
+		int total;
+		unsigned int dim;
+		int offsetMask;
 
-	std::vector<InternalNode*> table;
-	std::vector<float> values;
+		unsigned int log2dim;
+		int numValues;
 
-	bool oldVersion;
-	bool useCompression;
+		bool bboxInitialized;
+		Bbox localBbox;
 
-	Mask childMask;
-	Mask valueMask;
-	Mask selectionMask;
+		std::vector<InternalNode*> table;
+		std::vector<float> values;
 
-	InternalNode* parent;
-	InternalNode* firstChild;
+		bool oldVersion;
+		bool useCompression;
 
-	InternalNode();
+		Mask childMask;
+		Mask valueMask;
+		Mask selectionMask;
 
-	void read(unsigned int id, glm::vec3 origin, float background, unsigned int depth = 0);
-	void readValues();
-	void readData(const bool seek, uint32_t offset, uint32_t num_indices, unsigned int tempCount);
-	void readCompressedData(std::string codec);
+		InternalNode* parent;
+		InternalNode* firstChild;
 
-	glm::vec3 traverseOffset(InternalNode* node);
-	Bbox getLocalBbox();
-	bool contains(glm::ivec3 pos);
-	int coordToOffset(glm::ivec3 pos);
-	float getValue(glm::ivec3 pos, Accessor* accessor = nullptr);
-	bool isLeaf();
-};
+		InternalNode();
 
-class RootNode {
-public:
-	SharedContext* sharedContext;
+		void read(unsigned int id, glm::vec3 origin, float background, unsigned int depth = 0);
+		void readValues();
+		void readData(const bool seek, uint32_t offset, uint32_t num_indices, unsigned int tempCount);
+		void readCompressedData(std::string codec);
 
-	unsigned int leavesCount;
+		glm::vec3 traverseOffset(InternalNode* node);
+		Bbox getLocalBbox();
+		bool contains(glm::ivec3 pos);
+		int coordToOffset(glm::ivec3 pos);
+		float getValue(glm::ivec3 pos, Accessor* accessor = nullptr);
+		bool isLeaf();
+	};
 
-	float background;
-	unsigned int numTiles;
-	unsigned int numChildren;
-	glm::vec3 origin;
+	class RootNode {
+	public:
+		SharedContext* sharedContext;
 
-	std::vector<InternalNode> table; // ?
+		unsigned int leavesCount;
 
-	RootNode();
+		float background;
+		unsigned int numTiles;
+		unsigned int numChildren;
+		glm::vec3 origin;
 
-	void read();
-	void readChildren();
-	void readTile();
-	void readInternalNode(unsigned int id);
+		std::vector<InternalNode> table; // ?
 
-	float getValue(glm::ivec3 pos, Accessor* accessor = nullptr);
-	virtual bool isLeaf() { return false; };
-};
+		RootNode();
+
+		void read();
+		void readChildren();
+		void readTile();
+		void readInternalNode(unsigned int id);
+
+		float getValue(glm::ivec3 pos, Accessor* accessor = nullptr);
+		virtual bool isLeaf() { return false; };
+	};
+
+}

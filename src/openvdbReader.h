@@ -5,32 +5,37 @@
 
 #include "grid.h"
 
-struct FileVersion
+namespace easyVDB
 {
-	unsigned int version;
-	unsigned int minor;
-	unsigned int major;
-};
 
-class OpenVDBReader {
-public:
-	SharedContext sharedContext;
-	BufferIterator* bufferIterator;
+	struct FileVersion
+	{
+		unsigned int version;
+		unsigned int minor;
+		unsigned int major;
+	};
 
-	// header data
-	FileVersion fileVersion;
-	bool hasGridOffsets;
-	Compression compression;
-	std::vector<Metadata> metadata; // list of metadata per grid
+	class OpenVDBReader {
+	public:
+		SharedContext sharedContext;
+		BufferIterator* bufferIterator;
 
-	// grid data
-	Grid* grids;
-	unsigned int gridsSize;
+		// header data
+		FileVersion fileVersion;
+		bool hasGridOffsets;
+		Compression compression;
+		std::vector<Metadata> metadata; // list of metadata per grid
 
-	OpenVDBReader();
-	void read(std::vector<uint8_t> source);
-	bool isValidFile();
-	bool readFileVersion();
-	bool readHeader();
-	bool readGrids();
-};
+		// grid data
+		Grid* grids;
+		unsigned int gridsSize;
+
+		OpenVDBReader();
+		void read(std::vector<uint8_t> source);
+		bool isValidFile();
+		bool readFileVersion();
+		bool readHeader();
+		bool readGrids();
+	};
+
+}
