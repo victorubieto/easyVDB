@@ -3,7 +3,7 @@
 #include <iostream>
 
 // Compression
-#include "../libraries/martell-zlib/zlib.h"
+#include "../libraries/zlib/zlib.h"
 #include "../libraries/c-blosc/blosc/blosc.h"
 
 namespace easyVDB
