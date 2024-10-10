@@ -382,30 +382,23 @@ void InternalNode::readCompressedData(std::string codec)
 		uint8_t* compressedBytes = sharedContext->bufferIterator->readRawBytes(compressedBytesCount);
 		uint8_t* resultBytes{ 0 };
 
-		try {
-			int valueTypeLength = sharedContext->bufferIterator->floatingPointPrecisionLUT(sharedContext->valueType).size;
-			int count = this->numValues;
-			long long outputLength = valueTypeLength * count;
-			resultBytes = new uint8_t[outputLength];
+		int valueTypeLength = sharedContext->bufferIterator->floatingPointPrecisionLUT(sharedContext->valueType).size;
+		int count = this->numValues;
+		long long outputLength = valueTypeLength * count;
+		resultBytes = new uint8_t[outputLength];
 
-			if (codec == "zlib") {
-				uncompressZlib(compressedBytesCount, compressedBytes, outputLength, resultBytes);
-			}
-			else if (codec == "blosc") {
-				uncompressBlosc(compressedBytesCount, compressedBytes, outputLength, resultBytes);
-			}
-			else {
-				std::cout << "[WARN] Unsupported compression codec: " << codec << std::endl;
-			}
+		if (codec == "zlib") {
+			uncompressZlib(compressedBytesCount, compressedBytes, outputLength, resultBytes);
+		}
+		else if (codec == "blosc") {
+			uncompressBlosc(compressedBytesCount, compressedBytes, outputLength, resultBytes);
+		}
+		else {
+			std::cout << "[WARN] Unsupported compression codec: " << codec << std::endl;
+		}
 
-			std::vector<uint8_t> my_vector(&resultBytes[0], &resultBytes[outputLength]);
-			this->values.insert(values.end(), my_vector.begin(), my_vector.end());
-		}
-		catch (const std::exception& e) {
-			std::cout << "[WARN] " + codec + " uncompress error: " << e.what() << std::endl;
-			// check compressedBytes if fails
-			assert(false);
-		}
+		std::vector<uint8_t> my_vector(&resultBytes[0], &resultBytes[outputLength]);
+		this->values.insert(values.end(), my_vector.begin(), my_vector.end());
 	}
 }
 

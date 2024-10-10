@@ -22,6 +22,15 @@ target_include_directories(${PROJECT_NAME} PUBLIC ${VDB_DIR_SRC})
 
 set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 20)
 
+# patch zlib to support emscripten build
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/libraries/patches/zlib_web_build_fix.patch" "${CMAKE_CURRENT_SOURCE_DIR}/libraries/zlib/zlib_web_build_fix.patch" COPYONLY)
+
+message(STATUS "Applying Zlib web fix patch...")
+
+execute_process(
+    COMMAND cmd /C cd ${CMAKE_CURRENT_SOURCE_DIR}/libraries/zlib && git apply zlib_web_build_fix.patch
+)
+
 # zlib
 set(ZLIB_BUILD_EXAMPLES OFF)
 add_subdirectory(libraries/zlib)
