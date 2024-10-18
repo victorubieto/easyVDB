@@ -154,7 +154,7 @@ void InternalNode::readValues()
 
 	if (isLeaf()) {
 		// We can skip this since a node3 only stores the value mask, which was already read in the previous function
-		return;
+		//return;
 
 		// REMOVE???
 		this->values = std::vector<float>(valueMask.size, 0.0f);

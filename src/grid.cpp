@@ -181,6 +181,8 @@ void Grid::readBuffers()
 {
 	InternalNode& L1_node = this->root.table[0];
 
+	bool hotFix = false;
+
 	// traverse all nodes 4
 	for (unsigned int j = 0; j < L1_node.table.size(); j++) {
 
@@ -193,16 +195,28 @@ void Grid::readBuffers()
 			InternalNode* L3_node = L2_node->table[k];
 			if (L3_node == NULL) continue;
 
+			if (hotFix) {
+				// uncontrolled case, by now we copy the mask bits as values
+				L3_node->data = L3_node->values;
+				continue;
+			}
+
 			// skip value mask again
 			this->sharedContext->bufferIterator->readBytes(64u);
 
 			// read metadata 1 byte
-			unsigned int metadata = NodeMetaData::NoMaskAndAllVals;
-			metadata = sharedContext->bufferIterator->readBytes(1u); // 1 byte
+			unsigned int metadata = sharedContext->bufferIterator->readBytes(1u); // 1 byte
 
-			// init and read values
-			L3_node->data = std::vector<float>(512);
-			L3_node->readData(false, 0.f, 0.f, 512, L3_node->data);
+			if (metadata >= 0 && metadata <= 6) {
+				// init and read values
+				L3_node->data = std::vector<float>(512);
+				L3_node->readData(false, 0.f, 0.f, 512, L3_node->data);
+			}
+			else {
+				// uncontrolled case, by now we copy the mask bits as values
+				hotFix = true;
+				L3_node->data = L3_node->values;
+			}
 		}
 	}
 }
