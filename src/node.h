@@ -35,15 +35,17 @@ namespace easyVDB
 		bool bboxInitialized;
 		Bbox localBbox;
 
-		std::vector<InternalNode*> table;
-		std::vector<float> values;
-
 		bool oldVersion;
 		bool useCompression;
 
-		Mask childMask;
-		Mask valueMask;
-		Mask selectionMask;
+		std::vector<InternalNode*> table;
+
+		Mask childMask; // node 5-4-3
+		Mask valueMask; // node 5-4
+		Mask selectionMask; // node 5-4
+
+		std::vector<float> values; // node 5-4
+		std::vector<float> data; // node 3
 
 		InternalNode* parent;
 		InternalNode* firstChild;
@@ -52,8 +54,8 @@ namespace easyVDB
 
 		void read(unsigned int id, glm::vec3 origin, float background, unsigned int depth = 0);
 		void readValues();
-		void readData(const bool seek, uint32_t offset, uint32_t num_indices, unsigned int tempCount);
-		void readCompressedData(std::string codec);
+		void readData(const bool seek, uint32_t offset, uint32_t num_indices, unsigned int tempCount, std::vector<float>& outArray);
+		void readCompressedData(std::string codec, std::vector<float>& outArray);
 
 		glm::vec3 traverseOffset(InternalNode* node);
 		Bbox getLocalBbox();

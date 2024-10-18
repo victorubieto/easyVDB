@@ -17,7 +17,7 @@ RootNode::RootNode()
 
 void RootNode::read()
 {
-	background = sharedContext->bufferIterator->readFloat(sharedContext->valueType);
+	background = sharedContext->bufferIterator->readFloat(floatType); // always read background as float, even if the data is stored as half floats
 	numTiles = sharedContext->bufferIterator->readBytes(uint32Size);
 	numChildren = sharedContext->bufferIterator->readBytes(uint32Size);
 	// init table
@@ -153,20 +153,24 @@ void InternalNode::readValues()
 	const bool seek = this->values.size() == 0;
 
 	if (isLeaf()) {
-		values = std::vector<float>(valueMask.size, 0.0f);
+		// We can skip this since a node3 only stores the value mask, which was already read in the previous function
+		return;
+
+		// REMOVE???
+		this->values = std::vector<float>(valueMask.size, 0.0f);
 
 		if (valueMask.countOn() == 0) {
 			return;
 		}
 
 		for (int i = 0; i < valueMask.size; i++) {
-			values[i] = (float)valueMask.onIndexCache[i];
+			this->values[i] = (float)valueMask.onIndexCache[i];
 		}
 
 		return;
 	}
 
-	int destCount = oldVersion ? childMask.countOff() : numValues;
+	int destCount = oldVersion ? childMask.countOff() : this->numValues;
 	unsigned int metadata = NodeMetaData::NoMaskAndAllVals;
 
 	// Get delayed load metadata if it exists
@@ -238,7 +242,7 @@ void InternalNode::readValues()
 	}
 
 	unsigned int tempCount = destCount;
-	std::vector<float> tempBuf = values;
+	std::vector<float> tempBuf = this->values;
 
 	if (useCompression && metadata != NodeMetaData::NoMaskAndAllVals && *(sharedContext->version) >= OPENVDB_FILE_VERSION_NODE_MASK_COMPRESSION) {
 		tempCount = valueMask.countOn();
@@ -248,7 +252,8 @@ void InternalNode::readValues()
 		}
 	}
 
-	readData(seek, offset, num_indices, tempCount); //
+	this->values = std::vector<float>(this->numValues);
+	readData(seek, offset, num_indices, tempCount, this->values); // read value array of nodes 5-4
 
 	// https://github.com/AcademySoftwareFoundation/openvdb/blob/aea0f0e022141a32fee66378d1fee53b3a3fbc2e/openvdb/openvdb/io/Compression.h#L569
 	// If mask compression is enabled and the number of active values read into the temp buffer is
@@ -309,16 +314,16 @@ void InternalNode::readValues()
 	}
 }
 
-void InternalNode::readData(const bool seek, uint32_t offset, uint32_t num_indices, unsigned int tempCount)
+void InternalNode::readData(const bool seek, uint32_t offset, uint32_t num_indices, unsigned int tempCount, std::vector<float>& outArray)
 {
 	if (sharedContext->useHalf) {
 		if (tempCount < 1) return;
 	}
 
-	if (!seek) {
+	/*if (!seek) {
 		std::cout << "TO DO: seek" << std::endl;
 		assert(false);
-	}
+	}*/
 
 	if (this->sharedContext->useDelayedLoadMeta && seek && useCompression) {
 		// to do: optimize
@@ -350,10 +355,10 @@ void InternalNode::readData(const bool seek, uint32_t offset, uint32_t num_indic
 		sharedContext->bufferIterator->readBytes(compressedSize); // skip compressedSize bytes
 	}
 	else if (sharedContext->compression.blosc) {
-		readCompressedData("blosc");
+		readCompressedData("blosc", outArray);
 	}
 	else if (sharedContext->compression.zlib) {
-		readCompressedData("zlib");
+		readCompressedData("zlib", outArray);
 	}
 	else if (seek) {
 		PrecisionLUT precisionLUT = sharedContext->bufferIterator->floatingPointPrecisionLUT(sharedContext->useHalf ? getPrecisionIdx("half") : sharedContext->valueType);
@@ -361,44 +366,81 @@ void InternalNode::readData(const bool seek, uint32_t offset, uint32_t num_indic
 	}
 	else {
 		for (unsigned int i = 0; i < tempCount; i++) {
-			this->values.push_back(sharedContext->bufferIterator->readFloat(sharedContext->useHalf ? getPrecisionIdx("half") : sharedContext->valueType));
+			outArray[i] = sharedContext->bufferIterator->readFloat(sharedContext->useHalf ? getPrecisionIdx("half") : sharedContext->valueType);
 		}
 	}
 }
 
-void InternalNode::readCompressedData(std::string codec)
+void InternalNode::readCompressedData(std::string codec, std::vector<float> &outArray)
 {
 	long long compressedBytesCount = sharedContext->bufferIterator->readBytes(8);
 
 	if (compressedBytesCount <= 0) {
-		for (int i = 0; i < -compressedBytesCount;) {
-			this->values.push_back(sharedContext->bufferIterator->readFloat(sharedContext->useHalf ? getPrecisionIdx("half") : sharedContext->valueType));
+		PrecisionLUT precisionLUT = sharedContext->bufferIterator->floatingPointPrecisionLUT(sharedContext->useHalf ? getPrecisionIdx("half") : sharedContext->valueType);
+		unsigned int s = precisionLUT.size;
 
-			PrecisionLUT precisionLUT = sharedContext->bufferIterator->floatingPointPrecisionLUT(sharedContext->useHalf ? getPrecisionIdx("half") : sharedContext->valueType);
-			i += precisionLUT.size;
+		if (sharedContext->useHalf)
+		{
+			for (int i = 0; i < -compressedBytesCount; i += s) {
+				outArray[i] = sharedContext->bufferIterator->readFloat(getPrecisionIdx("half"));
+			}
+		}
+		else {
+			for (int i = 0; i < -compressedBytesCount; i += s) {
+				outArray[i] = sharedContext->bufferIterator->readFloat(sharedContext->valueType);
+			}
 		}
 	}
 	else {
 		uint8_t* compressedBytes = sharedContext->bufferIterator->readRawBytes(compressedBytesCount);
-		uint8_t* resultBytes{ 0 };
+		uint8_t* decompressedBytes{ 0 };
 
-		int valueTypeLength = sharedContext->bufferIterator->floatingPointPrecisionLUT(sharedContext->valueType).size;
-		int count = this->numValues;
-		long long outputLength = valueTypeLength * count;
-		resultBytes = new uint8_t[outputLength];
+		try {
+			int valueTypeLength = sharedContext->bufferIterator->floatingPointPrecisionLUT(sharedContext->valueType).size;
+			long long outputLength = valueTypeLength * this->numValues;
+			decompressedBytes = new uint8_t[outputLength];
 
-		if (codec == "zlib") {
-			uncompressZlib(compressedBytesCount, compressedBytes, outputLength, resultBytes);
-		}
-		else if (codec == "blosc") {
-			uncompressBlosc(compressedBytesCount, compressedBytes, outputLength, resultBytes);
-		}
-		else {
-			std::cout << "[WARN] Unsupported compression codec: " << codec << std::endl;
-		}
+			if (codec == "zlib") {
+				uncompressZlib(compressedBytesCount, compressedBytes, outputLength, decompressedBytes);
+			}
+			else if (codec == "blosc") {
+				uncompressBlosc(compressedBytesCount, compressedBytes, outputLength, decompressedBytes);
+			}
+			else {
+				std::cout << "[WARN] Unsupported compression codec: " << codec << std::endl;
+			}
 
-		std::vector<uint8_t> my_vector(&resultBytes[0], &resultBytes[outputLength]);
-		this->values.insert(values.end(), my_vector.begin(), my_vector.end());
+			//std::vector<uint8_t> my_vector(&decompressedBytes[0], &decompressedBytes[outputLength]);
+
+			// join bytes depending on the value type
+			switch (sharedContext->valueType)
+			{
+				case halfFloatType:
+				{
+					uint16_t* halfFloatBytes = reinterpret_cast<uint16_t*>(decompressedBytes);
+					std::vector<uint16_t> halfFloatVec(&halfFloatBytes[0], &halfFloatBytes[outputLength / 2]); // correct the hardcoded 2
+					for (int i = 0; i < halfFloatVec.size(); i++) {
+						outArray[i] = half_to_float(halfFloatVec[i]);
+					}
+					break;
+				}
+				case floatType:
+				{
+					float* floatBytes = reinterpret_cast<float*>(decompressedBytes);
+					std::vector<float> floatVec(&floatBytes[0], &floatBytes[outputLength / 4]); // correct the hardcoded 4
+					outArray = floatVec;
+					break;
+				}
+				default:
+					break;
+			}
+			
+		}
+		catch (const std::exception& e) {
+			std::cout << "[WARN] " + codec + " uncompress error: " << e.what() << std::endl;
+			// check compressedBytes if fails
+			assert(false);
+		}
 	}
 }
 
@@ -464,7 +506,11 @@ float InternalNode::getValue(glm::ivec3 pos, Accessor* accessor)
 	}
 
 	if (isLeaf()) {
-		return this->valueMask.isOn(this->coordToOffset(pos)) ? 1.0 : 0.0;
+		//return this->valueMask.isOn(this->coordToOffset(pos)) ? 1.0 : 0.0; // old, this reads the mask instead of the correct voxel value
+		
+		// reads the tree data, if voxel is not activated, return 0 as value
+		int offsetPos = this->coordToOffset(pos);
+		return this->valueMask.isOn(offsetPos) ? this->data[offsetPos] : 0.0f;
 	}
 
 	InternalNode* targetChild = this->table[this->coordToOffset(pos)];

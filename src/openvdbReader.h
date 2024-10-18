@@ -18,6 +18,7 @@ namespace easyVDB
 	class OpenVDBReader {
 	public:
 		SharedContext sharedContext;
+		std::vector<uint8_t> rawBuffer;
 		BufferIterator* bufferIterator;
 
 		// header data
@@ -31,7 +32,10 @@ namespace easyVDB
 		unsigned int gridsSize;
 
 		OpenVDBReader();
-		void read(std::vector<uint8_t> source);
+		~OpenVDBReader();
+		void deinit();
+		bool openFile(std::string file_path);
+		bool read(std::string file_path);
 		bool isValidFile();
 		bool readFileVersion();
 		bool readHeader();

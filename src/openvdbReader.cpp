@@ -1,5 +1,7 @@
 #include "openvdbReader.h"
 #include <iostream>
+#include <istream>
+#include <fstream>
 
 #include "versions.h"
 
@@ -14,21 +16,82 @@ OpenVDBReader::OpenVDBReader()
 
 	sharedContext.useHalf = false;
 	sharedContext.useDelayedLoadMeta = false;
+
+	this->bufferIterator = nullptr;
+	this->grids = nullptr;
 }
 
-void OpenVDBReader::read(std::vector<uint8_t> source)
+easyVDB::OpenVDBReader::~OpenVDBReader()
 {
+	this->deinit();
+}
+
+void easyVDB::OpenVDBReader::deinit()
+{
+	// destroy bufferiterator
+	if (bufferIterator)
+	{
+		delete bufferIterator;
+		bufferIterator = nullptr;
+	}
+		
+	// destroy grids
+	if (grids)
+	{
+		delete grids;
+		grids = nullptr;
+	}
+
+	// clean the rawbuffer array
+	this->rawBuffer.resize(0);
+
+	// To do
+	// ...
+}
+
+bool easyVDB::OpenVDBReader::openFile(std::string file_path)
+{
+	// Open file
+	std::ifstream input_file(file_path, std::ios::binary | std::ios::ate); // ate changes the seek pointer to the end of the file
+	std::cout << "\n[INFO] Opening VDB file '" << file_path << "'" << std::endl;
+
+	// tellg returns pos_type which is a fpos object with a `.operator streamoff()`.
+	const auto eof_position = static_cast<std::streamoff>(input_file.tellg());
+	if (eof_position == -1) {
+		std::cout << "\n[ERR] Could not open file '" << file_path << "', check if the path is correct" << std::endl;
+		return false;
+	}
+
+	this->deinit();
+
+	this->rawBuffer.resize(eof_position);
+
+	// Change the seek pointer to the beginning
+	input_file.seekg(0, std::ios::beg);
+	// Copy all the bytes from from the the file into the vector named return
+	input_file.read(reinterpret_cast<char*>(this->rawBuffer.data()), eof_position);
+	input_file.close();
+
+	return true;
+}
+
+bool OpenVDBReader::read(std::string file_path)
+{
+	if (!this->openFile(file_path)) {
+		return false;
+	}
+
 	const auto start = std::chrono::high_resolution_clock::now();
 
 	// TODO: prepare compression modules
 
-	bufferIterator = new BufferIterator(source);
-	sharedContext.bufferIterator = bufferIterator;
+	this->bufferIterator = new BufferIterator(this->rawBuffer);
+	sharedContext.bufferIterator = this->bufferIterator;
 
-	if (isValidFile()) {					// 8 bytes
-		readFileVersion();					// 3 * 4 bytes = 12 bytes 
-		readHeader();						// 1 + 36 + 4 = 41 bytes (metadata is especified per grid, so here is 0)
-		readGrids();						// 4 
+	if (isValidFile()) {	// 8 bytes
+		readFileVersion();	// 12 bytes 
+		readHeader();
+		readGrids();
 	}
 	else {
 		std::cout << "[ERROR] Not a VDB file." << std::endl;
@@ -36,6 +99,11 @@ void OpenVDBReader::read(std::vector<uint8_t> source)
 
 	const auto end = std::chrono::high_resolution_clock::now();
 	std::cout << "[INFO] VDB read successfully in " << std::chrono::duration_cast<std::chrono::milliseconds> (end - start).count() << "ms" << std::endl;
+
+	// clean the buffer array once everything is loaded
+	this->rawBuffer.resize(0);
+
+	return true;
 }
 
 bool OpenVDBReader::isValidFile()

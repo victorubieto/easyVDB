@@ -64,15 +64,22 @@ namespace easyVDB
 		return (b & 0x80000000) >> 16 | (e > 112) * ((((e - 112) << 10) & 0x7C00) | m >> 13) | ((e < 113) & (e > 101)) * ((((0x007FF000 + m) >> (125 - e)) + 1) >> 1) | (e > 143) * 0x7FFF; // sign : normalized : denormalized : saturate
 	}
 
+	// lossy compression, we assume that x cannot be negative and is between 0 and 1
+	inline unsigned char float_to_u8(float x)
+	{
+		return static_cast<unsigned char> (x * 255.f);
+		//return static_cast<unsigned char> (std::clamp(x * 510.f, 0.f, 255.f));
+	}
+
 	// special stuff --
 
 	class BufferIterator {
 	public:
 		// buffer data management
-		std::vector<uint8_t> rawBuffer;
+		std::vector<uint8_t>& rawBuffer;
 		unsigned int offset;
 
-		BufferIterator(std::vector<uint8_t> source, unsigned int offset = 0u);
+		BufferIterator(std::vector<uint8_t>& source, unsigned int offset = 0u);
 
 		// reads the N bytes sended and erases the N first values of the buffer
 		long long readBytes(unsigned int count);
@@ -110,8 +117,7 @@ namespace easyVDB
 		std::string name;
 		std::string type;
 		std::string value;
-		Metadata(std::string _name, std::string _type, std::string _value) : name(_name), type(_type), value(_value) {
-		}
+		Metadata(std::string _name, std::string _type, std::string _value) : name(_name), type(_type), value(_value) { }
 	};
 
 }

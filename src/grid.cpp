@@ -27,7 +27,7 @@ void Grid::read()
 	readCompression();	// 4 bytes
 	readMetadata();
 
-if (*(sharedContext->version) >= OPENVDB_FILE_VERSION_GRID_INSTANCING) {
+	if (*(sharedContext->version) >= OPENVDB_FILE_VERSION_GRID_INSTANCING) {
 		readGridTransform();
 		readTopology();
 		readBuffers(); // read tree data
@@ -204,7 +204,7 @@ Bbox Grid::getPreciseWorldBbox()
 {
 	std::string minString = getMetadata("file_bbox_min");
 	std::string maxString = getMetadata("file_bbox_max");
-	
+
 	std::stringstream minStream(minString);
 	std::stringstream maxStream(maxString);
 	std::string segment;
