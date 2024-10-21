@@ -179,43 +179,46 @@ void Grid::readTopology() // in implosion vdb here we are in offset 43885
 
 void Grid::readBuffers()
 {
-	InternalNode& L1_node = this->root.table[0];
-
 	bool hotFix = false;
 
-	// traverse all nodes 4
-	for (unsigned int j = 0; j < L1_node.table.size(); j++) {
+	// traverse all nodes 5
+	for (unsigned int i = 0; i < this->root.table.size(); i++) {
+		InternalNode& L1_node = this->root.table[i];
 
-		InternalNode* L2_node = L1_node.table[j];
-		if (L2_node == NULL) continue;
+		// traverse all nodes 4
+		for (unsigned int j = 0; j < L1_node.table.size(); j++) {
 
-		// traverse all nodes 3
-		for (unsigned int k = 0; k < L2_node->table.size(); k++) {
+			InternalNode* L2_node = L1_node.table[j];
+			if (L2_node == NULL) continue;
 
-			InternalNode* L3_node = L2_node->table[k];
-			if (L3_node == NULL) continue;
+			// traverse all nodes 3
+			for (unsigned int k = 0; k < L2_node->table.size(); k++) {
 
-			if (hotFix) {
-				// uncontrolled case, by now we copy the mask bits as values
-				L3_node->data = L3_node->values;
-				continue;
-			}
+				InternalNode* L3_node = L2_node->table[k];
+				if (L3_node == NULL) continue;
 
-			// skip value mask again
-			this->sharedContext->bufferIterator->readBytes(64u);
+				if (hotFix) {
+					// uncontrolled case, by now we copy the mask bits as values
+					L3_node->data = L3_node->values;
+					continue;
+				}
 
-			// read metadata 1 byte
-			unsigned int metadata = sharedContext->bufferIterator->readBytes(1u); // 1 byte
+				// skip value mask again
+				this->sharedContext->bufferIterator->readBytes(64u);
 
-			if (metadata >= 0 && metadata <= 6) {
-				// init and read values
-				L3_node->data = std::vector<float>(512);
-				L3_node->readData(false, 0.f, 0.f, 512, L3_node->data);
-			}
-			else {
-				// uncontrolled case, by now we copy the mask bits as values
-				hotFix = true;
-				L3_node->data = L3_node->values;
+				// read metadata 1 byte
+				unsigned int metadata = sharedContext->bufferIterator->readBytes(1u); // 1 byte
+
+				if (metadata >= 0 && metadata <= 6) {
+					// init and read values
+					L3_node->data = std::vector<float>(512);
+					L3_node->readData(false, 0.f, 0.f, 512, L3_node->data);
+				}
+				else {
+					// uncontrolled case, by now we copy the mask bits as values
+					hotFix = true;
+					L3_node->data = L3_node->values;
+				}
 			}
 		}
 	}

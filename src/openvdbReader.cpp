@@ -179,7 +179,7 @@ bool OpenVDBReader::readGrids()
 		gridsSize = gridCount;
 		grids = new Grid[gridCount];
 
-		for (unsigned int i = 0u; i < gridCount; i++) {
+ 		for (unsigned int i = 0u; i < gridCount; i++) {
 			grids[i].sharedContext = &sharedContext;
 			grids[i].read();
 			std::cout << "Grids read: " << i+1 << std::endl;
