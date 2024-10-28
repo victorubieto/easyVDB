@@ -155,7 +155,7 @@ float BufferIterator::readFloat(unsigned int precision)
 			binary = s + binary;
 		}
 
-		int sign = binary[0] == (char)"1" ? -1 : 1;
+		int sign = binary[0] == (char)'1' ? -1 : 1;
 
 		int exponent = std::stoi(std::string(&binary[1], &binary[precisionLUT.exp + 1]), nullptr, 2) - precisionLUT.bias;
 		std::string mantissa = "1" + std::string(&binary[precisionLUT.exp + 1], &binary[binary.size()]);

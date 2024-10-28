@@ -33,15 +33,10 @@ execute_process(
 
 # zlib
 set(ZLIB_BUILD_EXAMPLES OFF)
-add_subdirectory(libraries/zlib)
+add_subdirectory(libraries/zlib ${CMAKE_CURRENT_BINARY_DIR}/zlib_build)
 target_link_libraries(${PROJECT_NAME} PUBLIC zlibstatic)
 set_property(TARGET zlibstatic PROPERTY FOLDER "External/zlib")
 set_property(TARGET zlib PROPERTY FOLDER "External/zlib")
-if(EXISTS ${VDB_DIR_LIBS}/zlib/zconf.h.included)
-    message(STATUS "Renaming to zconf.h again")
-    file(RENAME ${VDB_DIR_LIBS}/zlib/zconf.h.included ${VDB_DIR_LIBS}/zlib/zconf.h)
-endif()
-
 # blosc
 set(BUILD_TESTS OFF CACHE BOOL "")
 set(BUILD_SHARED OFF CACHE BOOL "")
