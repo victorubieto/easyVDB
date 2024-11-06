@@ -37,6 +37,9 @@ add_subdirectory(libraries/zlib ${CMAKE_CURRENT_BINARY_DIR}/zlib_build)
 target_link_libraries(${PROJECT_NAME} PUBLIC zlibstatic)
 set_property(TARGET zlibstatic PROPERTY FOLDER "External/zlib")
 set_property(TARGET zlib PROPERTY FOLDER "External/zlib")
+set_property(TARGET zlibstatic PROPERTY CXX_STANDARD 20)
+set_property(TARGET zlib PROPERTY CXX_STANDARD 20)
+
 # blosc
 set(BUILD_TESTS OFF CACHE BOOL "")
 set(BUILD_SHARED OFF CACHE BOOL "")
