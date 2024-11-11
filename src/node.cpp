@@ -395,51 +395,42 @@ void InternalNode::readCompressedData(std::string codec, std::vector<float> &out
 		uint8_t* compressedBytes = sharedContext->bufferIterator->readRawBytes(compressedBytesCount);
 		uint8_t* decompressedBytes{ 0 };
 
-		try {
-			int valueTypeLength = sharedContext->bufferIterator->floatingPointPrecisionLUT(sharedContext->valueType).size;
-			long long outputLength = valueTypeLength * this->numValues;
-			decompressedBytes = new uint8_t[outputLength];
+		int valueTypeLength = sharedContext->bufferIterator->floatingPointPrecisionLUT(sharedContext->valueType).size;
+		long long outputLength = valueTypeLength * this->numValues;
+		decompressedBytes = new uint8_t[outputLength];
 
-			if (codec == "zlib") {
-				uncompressZlib(compressedBytesCount, compressedBytes, outputLength, decompressedBytes);
-			}
-			else if (codec == "blosc") {
-				uncompressBlosc(compressedBytesCount, compressedBytes, outputLength, decompressedBytes);
-			}
-			else {
-				std::cout << "[WARN] Unsupported compression codec: " << codec << std::endl;
-			}
-
-			//std::vector<uint8_t> my_vector(&decompressedBytes[0], &decompressedBytes[outputLength]);
-
-			// join bytes depending on the value type
-			switch (sharedContext->valueType)
-			{
-				case halfFloatType:
-				{
-					uint16_t* halfFloatBytes = reinterpret_cast<uint16_t*>(decompressedBytes);
-					std::vector<uint16_t> halfFloatVec(&halfFloatBytes[0], &halfFloatBytes[outputLength / 2]); // correct the hardcoded 2
-					for (int i = 0; i < halfFloatVec.size(); i++) {
-						outArray[i] = half_to_float(halfFloatVec[i]);
-					}
-					break;
-				}
-				case floatType:
-				{
-					float* floatBytes = reinterpret_cast<float*>(decompressedBytes);
-					std::vector<float> floatVec(&floatBytes[0], &floatBytes[outputLength / 4]); // correct the hardcoded 4
-					outArray = floatVec;
-					break;
-				}
-				default:
-					break;
-			}
-			
+		if (codec == "zlib") {
+			uncompressZlib(compressedBytesCount, compressedBytes, outputLength, decompressedBytes);
 		}
-		catch (const std::exception& e) {
-			std::cout << "[WARN] " + codec + " uncompress error: " << e.what() << std::endl;
-			// check compressedBytes if fails
-			assert(false);
+		else if (codec == "blosc") {
+			uncompressBlosc(compressedBytesCount, compressedBytes, outputLength, decompressedBytes);
+		}
+		else {
+			std::cout << "[WARN] Unsupported compression codec: " << codec << std::endl;
+		}
+
+		// join bytes depending on the value type
+		switch (sharedContext->valueType)
+		{
+			case halfFloatType:
+			{
+				uint16_t* halfFloatBytes = reinterpret_cast<uint16_t*>(decompressedBytes);
+				std::vector<uint16_t> halfFloatVec(&halfFloatBytes[0], &halfFloatBytes[outputLength / 2]); // correct the hardcoded 2
+				for (int i = 0; i < halfFloatVec.size(); i++) {
+					outArray[i] = half_to_float(halfFloatVec[i]);
+				}
+				break;
+			}
+			case floatType:
+			{
+				float* floatBytes = reinterpret_cast<float*>(decompressedBytes);
+				std::vector<float> floatVec(&floatBytes[0], &floatBytes[outputLength / 4]); // correct the hardcoded 4
+				outArray = floatVec;
+				break;
+			}
+			default:
+				std::cout << "[WARN] Cannot decompress. Unknown out type for the values." << std::endl;
+				break;
 		}
 	}
 }

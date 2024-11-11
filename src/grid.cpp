@@ -6,6 +6,7 @@
 
 #include "accessor.h"
 #include "versions.h"
+#include "compression.h"
 
 using namespace easyVDB;
 
@@ -179,8 +180,6 @@ void Grid::readTopology() // in implosion vdb here we are in offset 43885
 
 void Grid::readBuffers()
 {
-	bool hotFix = false;
-
 	// traverse all nodes 5
 	for (unsigned int i = 0; i < this->root.table.size(); i++) {
 		InternalNode& L1_node = this->root.table[i];
@@ -197,28 +196,26 @@ void Grid::readBuffers()
 				InternalNode* L3_node = L2_node->table[k];
 				if (L3_node == NULL) continue;
 
-				if (hotFix) {
-					// uncontrolled case, by now we copy the mask bits as values
-					L3_node->data = L3_node->values;
-					continue;
-				}
-
 				// skip value mask again
 				this->sharedContext->bufferIterator->readBytes(64u);
 
-				// read metadata 1 byte
-				unsigned int metadata = sharedContext->bufferIterator->readBytes(1u); // 1 byte
-
-				if (metadata >= 0 && metadata <= 6) {
-					// init and read values
-					L3_node->data = std::vector<float>(512);
-					L3_node->readData(false, 0.f, 0.f, 512, L3_node->data);
+				// bunny_cloud.vdb case
+				if (*(this->sharedContext->version) < OPENVDB_FILE_VERSION_NODE_MASK_COMPRESSION)
+				{
+					// Read in the origin
+					//L3_node->origin = sharedContext->bufferIterator->readVector3(int32Type); // 12 bytes
+					sharedContext->bufferIterator->readBytes(12u); // To do: sees to be bad, check why
+					sharedContext->bufferIterator->readBytes(1u); // Read in the number of buffers, which should now always be one (We will skip it by now)
 				}
 				else {
-					// uncontrolled case, by now we copy the mask bits as values
-					hotFix = true;
-					L3_node->data = L3_node->values;
+					// read metadata 1 byte
+					unsigned int metadata = sharedContext->bufferIterator->readBytes(1u); // 1 byte
 				}
+
+				// To do: use readValues() instead of readData(), so metadata is read inside the funciton
+				// https://github.com/AcademySoftwareFoundation/openvdb/blob/5201109680912e0f8333971dfabd33c13655b314/openvdb/openvdb/io/Compression.h#L466
+				L3_node->data = std::vector<float>(512);
+				L3_node->readData(false, 0.f, 0.f, 512, L3_node->data);
 			}
 		}
 	}

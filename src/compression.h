@@ -9,7 +9,7 @@
 namespace easyVDB
 {
 
-    void uncompressZlib(int64_t input_len, const uint8_t* input, int64_t output_len, uint8_t* output)
+    inline void uncompressZlib(int64_t input_len, const uint8_t* input, int64_t output_len, uint8_t* output)
     {
         static constexpr auto input_limit = static_cast<int64_t>(std::numeric_limits<uInt>::max());
         bool finished_;
@@ -46,7 +46,7 @@ namespace easyVDB
         return;
     }
 
-    void uncompressBlosc(int64_t input_len, const uint8_t* input, int64_t output_len, uint8_t* output)
+    inline void uncompressBlosc(int64_t input_len, const uint8_t* input, int64_t output_len, uint8_t* output)
     {
         uint8_t result = blosc_decompress(input, output, output_len);
         if (result < 0) {
