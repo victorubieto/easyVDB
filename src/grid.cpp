@@ -199,6 +199,8 @@ void Grid::readBuffers()
 				// skip value mask again
 				this->sharedContext->bufferIterator->readBytes(64u);
 
+				unsigned int _metadata = 0u;
+
 				// bunny_cloud.vdb case
 				if (*(this->sharedContext->version) < OPENVDB_FILE_VERSION_NODE_MASK_COMPRESSION)
 				{
@@ -209,13 +211,53 @@ void Grid::readBuffers()
 				}
 				else {
 					// read metadata 1 byte
-					unsigned int metadata = sharedContext->bufferIterator->readBytes(1u); // 1 byte
+					_metadata = sharedContext->bufferIterator->readBytes(1u); // 1 byte
+				}
+
+				bool oldVersion = *(sharedContext->version) < OPENVDB_FILE_VERSION_NODE_MASK_COMPRESSION;
+				bool useCompression = sharedContext->compression.activeMask;
+				unsigned int destCount = oldVersion ? L3_node->childMask.countOff() : L3_node->numValues;
+				unsigned int tempCount = destCount;
+				float inactiveVal1 = L3_node->background;
+				float inactiveVal0 = _metadata == NodeMetaData::NoMaskOrInactiveVals ? L3_node->background : -L3_node->background;
+				std::vector<float> tempBuf = L3_node->values;
+
+				if (useCompression && _metadata != NodeMetaData::NoMaskAndAllVals && *(sharedContext->version) >= OPENVDB_FILE_VERSION_NODE_MASK_COMPRESSION) {
+					tempCount = L3_node->valueMask.countOn();
+					if (tempCount != destCount) { // todo: add !seek in the condition
+						// If this node has inactive voxels, allocate a temporary buffer into which to read just the active values.
+						tempBuf.resize(tempCount);
+					}
 				}
 
 				// To do: use readValues() instead of readData(), so metadata is read inside the funciton
 				// https://github.com/AcademySoftwareFoundation/openvdb/blob/5201109680912e0f8333971dfabd33c13655b314/openvdb/openvdb/io/Compression.h#L466
-				L3_node->data = std::vector<float>(512);
-				L3_node->readData(false, 0.f, 0.f, 512, L3_node->data);
+				L3_node->readData(false, 0.f, 0.f, tempCount, tempBuf);
+
+				L3_node->data.resize(L3_node->numValues);
+				if (tempCount == destCount) {
+					L3_node->data = tempBuf;
+				}
+
+				// If mask compression is enabled and the number of active values read into the temp buffer is smaller 
+				// than the size of the destination buffer, then there are missing (inactive) values.
+				// https://github.com/AcademySoftwareFoundation/openvdb/blob/5201109680912e0f8333971dfabd33c13655b314/openvdb/openvdb/io/Compression.h#L569
+				if (useCompression && tempCount != destCount) {
+					// ref: https://github.com/Traverse-Research/vdb-rs/blob/f146fc083a2df19da555b1c976ed8cd6b5498748/src/reader.rs#L369
+					// Restore inactive values, using the background value and, if available, the inside/outside mask. 
+					// (For fog volumes, the destination buffer is assumed to be initialized to background value zero, so inactive values can be ignored.)
+					for (int32_t destIdx = 0, tempIdx = 0; destIdx < L3_node->valueMask.size; destIdx++) {
+						if (L3_node->valueMask.isOn(destIdx)) {
+							// Copy a saved active value into this node's buffer.
+							L3_node->data[destIdx] = tempBuf[tempIdx];
+							tempIdx++;
+						}
+						else {
+							// Reconstruct an unsaved inactive value and copy it into this node's buffer
+							L3_node->data[destIdx] = (L3_node->selectionMask.size > 0 && L3_node->selectionMask.isOn(destIdx)) ? inactiveVal1 : inactiveVal0;
+						}
+					}
+				}
 			}
 		}
 	}
