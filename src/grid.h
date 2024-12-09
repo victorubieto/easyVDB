@@ -7,8 +7,9 @@
 #include <glm/vec3.hpp>
 #include <glm/common.hpp>
 
+#include "bufferiterator.h"
 #include "node.h"
-#include "bbox.h"
+//#include "bbox.h"
 
 namespace easyVDB
 {
@@ -84,6 +85,11 @@ namespace easyVDB
 			}
 		}
 	};
+
+	class Accessor;
+	//struct SharedContext;
+	//struct Metadata;
+	//enum Precision;
 
 	class Grid {
 	public:

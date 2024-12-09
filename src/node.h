@@ -2,14 +2,16 @@
 
 #include <glm/vec3.hpp>
 
-#include "bufferIterator.h"
+//#include "bufferIterator.h"
 #include "mask.h"
 #include "bbox.h"
+#include "versions.h"
 
 namespace easyVDB
 {
 
 	class Accessor;
+	struct SharedContext;
 
 	class InternalNode {
 	public:
@@ -52,10 +54,10 @@ namespace easyVDB
 
 		InternalNode();
 
-		void read(unsigned int id, glm::vec3 origin, float background, unsigned int depth = 0);
-		void readValues();
-		void readData(const bool seek, uint32_t offset, uint32_t num_indices, unsigned int tempCount, std::vector<float>& outArray);
-		void readCompressedData(std::string codec, std::vector<float>& outArray);
+		void readTopology(unsigned int id, glm::vec3 origin, float background, unsigned int depth = 0);
+		ErrorCode readValues(std::vector<float>& destBuffer, int destCount); // readCompressedValues() in openVDB git repo
+		ErrorCode readData(unsigned int tempCount, std::vector<float>& outArray);
+		ErrorCode readCompressedData(std::string codec, std::vector<float>& outArray);
 
 		glm::vec3 traverseOffset(InternalNode* node);
 		Bbox getLocalBbox();

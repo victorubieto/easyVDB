@@ -4,8 +4,10 @@
 #include <string>
 #include <sstream>
 
-#include "accessor.h"
+//#include "bufferIterator.h"
 #include "versions.h"
+
+#include "accessor.h"
 #include "compression.h"
 
 using namespace easyVDB;
@@ -34,9 +36,16 @@ void Grid::read()
 		readBuffers(); // read tree data
 	}
 	else {
+		// Older versions of the library stored the transform after the topology
 		readTopology();
 		readGridTransform();
 		readBuffers();
+	}
+
+	// Older versions of the library didn't store grid names as metadata, so when reading 
+	// older files, copy the grid name from the descriptor to the grid's metadata.
+	if (*(sharedContext->version) < OPENVDB_FILE_VERSION_NO_GRIDMAP) {
+		// To do: grid->setName();
 	}
 
 	// Hack to make multi - grid VDBs work without reading leaf values
@@ -97,7 +106,7 @@ void Grid::readMetadata()
 		if (name == "file_delayed_load")
 		{
 			sharedContext->useDelayedLoadMeta = true;
-			sharedContext->delayedLoadMeta = value;
+			sharedContext->delayedMetada.metadata_string = value;
 		}
 
 		metadata.push_back(Metadata(name, type, value));
@@ -180,6 +189,11 @@ void Grid::readTopology() // in implosion vdb here we are in offset 43885
 
 void Grid::readBuffers()
 {
+	// reset the leaf count of the delayedLoadMetadata
+	if (this->sharedContext->useDelayedLoadMeta) {
+		this->sharedContext->delayedMetada.leafIndex = 0;
+	}
+
 	// traverse all nodes 5
 	for (unsigned int i = 0; i < this->root.table.size(); i++) {
 		InternalNode& L1_node = this->root.table[i];
@@ -199,64 +213,33 @@ void Grid::readBuffers()
 				// skip value mask again
 				this->sharedContext->bufferIterator->readBytes(64u);
 
-				unsigned int _metadata = 0u;
-
 				// bunny_cloud.vdb case
 				if (*(this->sharedContext->version) < OPENVDB_FILE_VERSION_NODE_MASK_COMPRESSION)
 				{
 					// Read in the origin
 					//L3_node->origin = sharedContext->bufferIterator->readVector3(int32Type); // 12 bytes
-					sharedContext->bufferIterator->readBytes(12u); // To do: sees to be bad, check why
+					sharedContext->bufferIterator->readBytes(12u); // To do: sees to be bad, check why (ref: https://github.com/AcademySoftwareFoundation/openvdb/blob/5201109680912e0f8333971dfabd33c13655b314/openvdb/openvdb/tree/LeafNode.h#L1333)
 					sharedContext->bufferIterator->readBytes(1u); // Read in the number of buffers, which should now always be one (We will skip it by now)
 				}
-				else {
-					// read metadata 1 byte
-					_metadata = sharedContext->bufferIterator->readBytes(1u); // 1 byte
-				}
 
-				bool oldVersion = *(sharedContext->version) < OPENVDB_FILE_VERSION_NODE_MASK_COMPRESSION;
-				bool useCompression = sharedContext->compression.activeMask;
-				unsigned int destCount = oldVersion ? L3_node->childMask.countOff() : L3_node->numValues;
-				unsigned int tempCount = destCount;
-				float inactiveVal1 = L3_node->background;
-				float inactiveVal0 = _metadata == NodeMetaData::NoMaskOrInactiveVals ? L3_node->background : -L3_node->background;
-				std::vector<float> tempBuf = L3_node->values;
+				bool oldVersion = *(this->sharedContext->version) < OPENVDB_FILE_VERSION_NODE_MASK_COMPRESSION;
+				int num_values = L3_node->numValues;
 
-				if (useCompression && _metadata != NodeMetaData::NoMaskAndAllVals && *(sharedContext->version) >= OPENVDB_FILE_VERSION_NODE_MASK_COMPRESSION) {
-					tempCount = L3_node->valueMask.countOn();
-					if (tempCount != destCount) { // todo: add !seek in the condition
-						// If this node has inactive voxels, allocate a temporary buffer into which to read just the active values.
-						tempBuf.resize(tempCount);
-					}
-				}
+				//L3_node->data = L3_node->values; // trick to see only the mask of the nodes (test to see if the topology is well parsed or not)
+				L3_node->data.resize(num_values);
+				L3_node->readValues(L3_node->data, num_values);
 
-				// To do: use readValues() instead of readData(), so metadata is read inside the funciton
-				// https://github.com/AcademySoftwareFoundation/openvdb/blob/5201109680912e0f8333971dfabd33c13655b314/openvdb/openvdb/io/Compression.h#L466
-				L3_node->readData(false, 0.f, 0.f, tempCount, tempBuf);
-
-				L3_node->data.resize(L3_node->numValues);
-				if (tempCount == destCount) {
+				/*if (tempCount == destCount) {
 					L3_node->data = tempBuf;
+				}*/
+
+				// To do: correct that the quantification is done within a min and max, so we don't lose data of low density volumes
+				for (std::vector<float>::iterator it = L3_node->data.begin(); it != L3_node->data.end(); ++it) {
+					*it += 0.125;
 				}
 
-				// If mask compression is enabled and the number of active values read into the temp buffer is smaller 
-				// than the size of the destination buffer, then there are missing (inactive) values.
-				// https://github.com/AcademySoftwareFoundation/openvdb/blob/5201109680912e0f8333971dfabd33c13655b314/openvdb/openvdb/io/Compression.h#L569
-				if (useCompression && tempCount != destCount) {
-					// ref: https://github.com/Traverse-Research/vdb-rs/blob/f146fc083a2df19da555b1c976ed8cd6b5498748/src/reader.rs#L369
-					// Restore inactive values, using the background value and, if available, the inside/outside mask. 
-					// (For fog volumes, the destination buffer is assumed to be initialized to background value zero, so inactive values can be ignored.)
-					for (int32_t destIdx = 0, tempIdx = 0; destIdx < L3_node->valueMask.size; destIdx++) {
-						if (L3_node->valueMask.isOn(destIdx)) {
-							// Copy a saved active value into this node's buffer.
-							L3_node->data[destIdx] = tempBuf[tempIdx];
-							tempIdx++;
-						}
-						else {
-							// Reconstruct an unsaved inactive value and copy it into this node's buffer
-							L3_node->data[destIdx] = (L3_node->selectionMask.size > 0 && L3_node->selectionMask.isOn(destIdx)) ? inactiveVal1 : inactiveVal0;
-						}
-					}
+				if (this->sharedContext->useDelayedLoadMeta) {
+					this->sharedContext->delayedMetada.leafIndex++;
 				}
 			}
 		}

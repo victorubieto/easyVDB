@@ -7,17 +7,17 @@
 
 #include "utils.h"
 
-// in bytes
-const unsigned int charSize = 1u;
-const unsigned int boolSize = 1u;
-const unsigned int uint32Size = 4u;
-const unsigned int uint64Size = 8u;
-const unsigned int uint128Size = 8u;
-const unsigned int floatSize = uint32Size;
-const unsigned int doubleSize = uint64Size;
-
 namespace easyVDB
 {
+
+	// in bytes
+	const unsigned int charSize = 1u;
+	const unsigned int boolSize = 1u;
+	const unsigned int uint32Size = 4u;
+	const unsigned int uint64Size = 8u;
+	const unsigned int uint128Size = 8u;
+	const unsigned int floatSize = uint32Size;
+	const unsigned int doubleSize = uint64Size;
 
 	enum Precision : unsigned int { stringType, int32Type, int64Type, boolType, halfFloatType, floatType, doubleType, vec3iType, vec3sType, vec3dType, pointDataIndex32, pointDataIndex64, undefined_precision };
 	struct PrecisionLUT { unsigned int exp; unsigned int bias; unsigned int size; };
@@ -94,12 +94,19 @@ namespace easyVDB
 		PrecisionLUT floatingPointPrecisionLUT(unsigned int precision);
 	};
 
-	struct Compression
-	{
+	struct Compression {
 		bool none;
 		bool zlib;
 		bool activeMask;
 		bool blosc;
+	};
+
+	struct DelayedLoadMetadata {
+		uint32_t offset;
+		uint32_t leafIndex;
+		uint32_t num_indices;
+		std::string metadata_string;
+		DelayedLoadMetadata() : offset(0), num_indices(0), leafIndex(0) {}
 	};
 
 	struct SharedContext {
@@ -107,13 +114,12 @@ namespace easyVDB
 		Precision valueType;
 		bool useHalf;
 		bool useDelayedLoadMeta;
-		std::string delayedLoadMeta;
+		DelayedLoadMetadata delayedMetada;
 		BufferIterator* bufferIterator;
 		unsigned int* version;
 	};
 
-	struct Metadata
-	{
+	struct Metadata {
 		std::string name;
 		std::string type;
 		std::string value;

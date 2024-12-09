@@ -4,6 +4,8 @@
 #include <vector>
 #include <bitset>
 
+#include "bufferIterator.h"
+
 #include "node.h"
 
 using namespace easyVDB;

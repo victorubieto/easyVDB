@@ -3,7 +3,9 @@
 #include <vector>
 #include <string>
 
-#include "grid.h"
+//#include "grid.h"
+//#include "bbox.h"
+#include "bufferIterator.h"
 
 namespace easyVDB
 {
@@ -15,9 +17,12 @@ namespace easyVDB
 		unsigned int major;
 	};
 
+	class Grid;
+
 	class OpenVDBReader {
 	public:
 		SharedContext sharedContext;
+
 		std::vector<uint8_t> rawBuffer;
 		BufferIterator* bufferIterator;
 
@@ -33,8 +38,10 @@ namespace easyVDB
 
 		OpenVDBReader();
 		~OpenVDBReader();
+
 		void deinit();
 		bool openFile(std::string file_path);
+
 		bool read(std::string file_path);
 		bool isValidFile();
 		bool readFileVersion();

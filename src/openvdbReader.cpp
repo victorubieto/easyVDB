@@ -4,6 +4,7 @@
 #include <fstream>
 
 #include "versions.h"
+#include "grid.h"
 
 using namespace easyVDB;
 

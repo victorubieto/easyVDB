@@ -2,14 +2,16 @@
 
 #include <iostream>
 
-// Compression
+// External compression libs
 #include "../libraries/zlib/zlib.h"
 #include "../libraries/c-blosc/blosc/blosc.h"
+
+#include "versions.h"
 
 namespace easyVDB
 {
 
-    inline void uncompressZlib(int64_t input_len, const uint8_t* input, int64_t output_len, uint8_t* output)
+    inline ErrorCode uncompressZlib(int64_t input_len, const uint8_t* input, int64_t output_len, uint8_t* output)
     {
         static constexpr auto input_limit = static_cast<int64_t>(std::numeric_limits<uInt>::max());
         bool finished_;
@@ -25,36 +27,40 @@ namespace easyVDB
         ret = inflate(&stream_, Z_SYNC_FLUSH);
         if (ret == Z_DATA_ERROR || ret == Z_STREAM_ERROR || ret == Z_MEM_ERROR) {
             std::cout << "zlib inflate failed: " << std::endl;
-            return;
+            return EASYVDB_COMPRESSION_ERROR_ZLIB;
         }
         if (ret == Z_NEED_DICT) {
             std::cout << "zlib inflate failed (need preset dictionary): " << std::endl;
-            return;
+            return EASYVDB_COMPRESSION_ERROR_ZLIB;
         }
         finished_ = (ret == Z_STREAM_END);
         if (ret == Z_BUF_ERROR) {
             // No progress was possible
             //DecompressResult{ 0, 0, true };
-            return;
+            return EASYVDB_COMPRESSION_ERROR_ZLIB;
         }
         else {
             ret == Z_OK || ret == Z_STREAM_END;
             // Some progress has been made
             //DecompressResult{ input_len - stream_.avail_in, output_len - stream_.avail_out, false };
-            return;
+            return EASYVDB_SUCCESS;
         }
-        return;
+        return EASYVDB_SUCCESS;
     }
 
-    inline void uncompressBlosc(int64_t input_len, const uint8_t* input, int64_t output_len, uint8_t* output)
+    inline ErrorCode uncompressBlosc(int64_t input_len, const uint8_t* input, int64_t output_len, uint8_t* output)
     {
         uint8_t result = blosc_decompress(input, output, output_len);
         if (result < 0) {
             printf("[ERROR] Decompression error. Error code: %d\n", result);
+            /* After using it, destroy the Blosc environment */
+            blosc_destroy();
+            return EASYVDB_COMPRESSION_ERROR_BLOSC;
         }
 
         /* After using it, destroy the Blosc environment */
         blosc_destroy();
+        return EASYVDB_SUCCESS;
     }
 
 }

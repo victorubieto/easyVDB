@@ -3,9 +3,11 @@
 #include <bitset>
 #include <iostream>
 
+#include "bufferIterator.h"
+#include "versions.h"
+
 #include "accessor.h"
 #include "compression.h"
-#include "versions.h"
 
 using namespace easyVDB;
 
@@ -68,7 +70,7 @@ void RootNode::readInternalNode(unsigned int id)
 	vec.z = sharedContext->bufferIterator->readFloat(int32Type);
 
 	table[id].sharedContext = sharedContext;
-	table[id].read(id, vec, background, 0);
+	table[id].readTopology(id, vec, background, 0);
 
 	leavesCount += table[id].leavesCount;
 }
@@ -90,13 +92,13 @@ float RootNode::getValue(glm::ivec3 pos, Accessor* accessor)
 
 InternalNode::InternalNode()
 {
-	firstChild = nullptr;
-	parent = nullptr;
+	this->firstChild = nullptr;
+	this->parent = nullptr;
 
-	bboxInitialized = false;
+	this->bboxInitialized = false;
 }
 
-void InternalNode::read(unsigned int _id, glm::vec3 _origin, float _background, unsigned int _depth)
+void InternalNode::readTopology(unsigned int _id, glm::vec3 _origin, float _background, unsigned int _depth)
 {
 	this->depth = _depth;
 	this->id = _id;
@@ -120,258 +122,238 @@ void InternalNode::read(unsigned int _id, glm::vec3 _origin, float _background, 
 	int numVoxels = 1 << (3 * total);
 	this->offsetMask = dim - 1;
 
+	// Read Child Mask
 	if (depth < 2) {
 		childMask = Mask();
 		childMask.read(this);
 	}
+	// Read Value Mask
 	valueMask = Mask();
 	valueMask.read(this);
 
 	if (isLeaf()) {
+		// In case we have a leaf here, end the function
 		leavesCount = 1u;
+		this->sharedContext->delayedMetada.leafIndex++;
+
+		// We can skip this since a node3 only stores the value mask in the topology (?)
+		//return;
+
+		// this helps to debug if topology is parsed correctly
+		this->values = std::vector<float>(this->valueMask.size, 0.0f);
+
+		if (this->valueMask.countOn() == 0) {
+			return;
+		}
+
+		for (int i = 0; i < this->valueMask.size; i++) {
+			this->values[i] = (float)this->valueMask.onIndexCache[i];
+		}
+
+		return;
 	}
 	else {
 		table = std::vector<InternalNode*>(numValues, nullptr); // only init table for the non leafs
 		leavesCount = 0u;
 	}
 
-	// init values
-	firstChild = nullptr;
+	this->firstChild = nullptr;
 
-	if (*(sharedContext->version) < 214u) {
+	// Read Values Array
+	if (*(this->sharedContext->version) < OPENVDB_FILE_VERSION_INTERNALNODE_COMPRESSION) {
 		std::cout << "[WARN] Unsupported: Internal-node compression" << std::endl;
+		// https://github.com/AcademySoftwareFoundation/openvdb/blob/5201109680912e0f8333971dfabd33c13655b314/openvdb/openvdb/tree/InternalNode.h#L2205
 		return;
 	}
+	else {
+		this->oldVersion = *(this->sharedContext->version) < OPENVDB_FILE_VERSION_NODE_MASK_COMPRESSION;
+		int num_values = this->oldVersion ? this->childMask.countOff() : this->numValues;
 
-	readValues();
+		this->values.resize(num_values);
+		readValues(this->values, num_values);
+
+		// Iterate and read recursively all the child nodes
+		for (unsigned int j = 0; j < this->childMask.onIndexCache.size(); j++) {
+			if (this->childMask.onIndexCache[j]) {
+				int offset = j;
+
+				int n = offset;
+				int x = n >> (2 * log2dim);
+				n &= (1 << (2 * log2dim)) - 1;
+				int y = n >> log2dim;
+				int z = n & ((1 << log2dim) - 1);
+				glm::vec3 vec(x, y, z);
+
+				InternalNode* child = new InternalNode();
+				child->sharedContext = sharedContext;
+				child->parent = this;
+				child->readTopology(offset, vec, background, depth + 1);
+
+				child->origin.x = (int)vec.x << child->total;
+				child->origin.y = (int)vec.y << child->total;
+				child->origin.z = (int)vec.z << child->total;
+
+				this->table[offset] = child;
+				this->leavesCount += child->leavesCount;
+
+				if (this->firstChild == nullptr) {
+					this->firstChild = child;
+				}
+			}
+		}
+	}
 }
 
-void InternalNode::readValues()
+ErrorCode InternalNode::readValues(std::vector<float>& destBuffer, int destCount)
 {
-	oldVersion = *(sharedContext->version) < OPENVDB_FILE_VERSION_NODE_MASK_COMPRESSION;
-	useCompression = sharedContext->compression.activeMask;
-	const bool seek = this->values.size() == 0;
-
-	if (isLeaf()) {
-		// We can skip this since a node3 only stores the value mask, which was already read in the previous function
-		//return;
-
-		// REMOVE???
-		this->values = std::vector<float>(valueMask.size, 0.0f);
-
-		if (valueMask.countOn() == 0) {
-			return;
-		}
-
-		for (int i = 0; i < valueMask.size; i++) {
-			this->values[i] = (float)valueMask.onIndexCache[i];
-		}
-
-		return;
-	}
-
-	int destCount = oldVersion ? childMask.countOff() : this->numValues;
-	unsigned int metadata = NodeMetaData::NoMaskAndAllVals;
+	// Get compression settings
+	this->useCompression = this->sharedContext->compression.activeMask;
+	DelayedLoadMetadata& delayedMetada = this->sharedContext->delayedMetada;
+	unsigned int metadata = EASYVDB_NO_MASK_AND_ALL_VALS;
 
 	// Get delayed load metadata if it exists
-	//uint64_t leafIndex = 0;
-	//if (seek && this->sharedContext->useDelayedLoadMeta) {
-	//	// leafINndex = meta->leaf();
-	//}
+	uint64_t leafIndex = 0;
+	if (this->sharedContext->useDelayedLoadMeta) {
+		leafIndex = delayedMetada.leafIndex;
+	}
 
-	uint32_t offset = 0;
-	uint32_t num_indices = 0;
-	if (*(sharedContext->version) >= OPENVDB_FILE_VERSION_NODE_MASK_COMPRESSION) {
-		if (seek && !useCompression) {
-			sharedContext->bufferIterator->readBytes(1u); // skip 1 byte
+	if (*(this->sharedContext->version) >= OPENVDB_FILE_VERSION_NODE_MASK_COMPRESSION) {
+		if (!this->useCompression) {
+			this->sharedContext->bufferIterator->readBytes(1u); // skip 1 byte
 		}
-		// to do: optimize
-		else if (seek && this->sharedContext->useDelayedLoadMeta) {
-			std::string delayLoadMeta = this->sharedContext->delayedLoadMeta;
+		else if (this->sharedContext->useDelayedLoadMeta) {
+			// read metadata from delayed load meta and skip 1 byte
+			uint32_t& offset_ref = delayedMetada.offset = 0;
+			uint32_t& num_indices_ref = delayedMetada.num_indices = 0;
+			std::string& metadata_string_ref = delayedMetada.metadata_string;
 
-			num_indices = static_cast<uint8_t>(delayLoadMeta[offset++]); // number of total leaves
-			num_indices |= static_cast<uint8_t>(delayLoadMeta[offset++]) << 8;
-			num_indices |= static_cast<uint8_t>(delayLoadMeta[offset++]) << 16;
-			num_indices |= static_cast<uint8_t>(delayLoadMeta[offset++]) << 24;
+			num_indices_ref = static_cast<uint8_t>(metadata_string_ref[offset_ref++]); // number of total leaves
+			num_indices_ref |= static_cast<uint8_t>(metadata_string_ref[offset_ref++]) << 8;
+			num_indices_ref |= static_cast<uint8_t>(metadata_string_ref[offset_ref++]) << 16;
+			num_indices_ref |= static_cast<uint8_t>(metadata_string_ref[offset_ref++]) << 24;
 
-			uint32_t mMask_length = static_cast<uint8_t>(delayLoadMeta[offset++]); // compressed
-			mMask_length |= static_cast<uint8_t>(delayLoadMeta[offset++]) << 8;
-			mMask_length |= static_cast<uint8_t>(delayLoadMeta[offset++]) << 16;
-			mMask_length |= static_cast<uint8_t>(delayLoadMeta[offset++]) << 24;
+			uint32_t mMask_length = static_cast<uint8_t>(metadata_string_ref[offset_ref++]); // compressed
+			mMask_length |= static_cast<uint8_t>(metadata_string_ref[offset_ref++]) << 8;
+			mMask_length |= static_cast<uint8_t>(metadata_string_ref[offset_ref++]) << 16;
+			mMask_length |= static_cast<uint8_t>(metadata_string_ref[offset_ref++]) << 24;
 
-			uint8_t* mMask = new uint8_t[num_indices];
-			uint8_t* compressedArray = reinterpret_cast<uint8_t*> (delayLoadMeta.data()) + offset;
-			uncompressBlosc(mMask_length, compressedArray, num_indices * sizeof(uint8_t), mMask);
-			offset += mMask_length;
+			uint8_t* mMask = new uint8_t[num_indices_ref];
+			uint8_t* compressedArray = reinterpret_cast<uint8_t*> (metadata_string_ref.data()) + offset_ref;
+			uncompressBlosc(mMask_length, compressedArray, num_indices_ref * sizeof(uint8_t), mMask);
+			offset_ref += mMask_length;
 
-			metadata = mMask[0]; // leafIndex = 0
-
-			sharedContext->bufferIterator->readBytes(1u); // skip 1 byte
+			metadata = mMask[leafIndex];
+			this->sharedContext->bufferIterator->readBytes(1u);
 		}
 		else {
-			metadata = sharedContext->bufferIterator->readBytes(1u); // 1 byte
+			metadata = this->sharedContext->bufferIterator->readBytes(1u); // read 1 byte
 		}
 	}
 
-	float inactiveVal1 = background;
-	float inactiveVal0 = metadata == NodeMetaData::NoMaskOrInactiveVals ? background : -background;
+	float inactiveVal1 = this->background;
+	float inactiveVal0 = metadata == EASYVDB_NO_MASK_OR_INACTIVE_VALS ? this->background : -this->background;
 
-	if (metadata == NodeMetaData::NoMaskAndOneInactiveVal || metadata == NodeMetaData::MaskAndOneInactiveVal || metadata == NodeMetaData::MaskAndTwoInactiveVals) {
-		std::cout << "[WARN] Unsupported: Compression::readCompressedValues first conditional" << std::endl;
-		// ref: https://github.com/Traverse-Research/vdb-rs/blob/f146fc083a2df19da555b1c976ed8cd6b5498748/src/reader.rs#L324
-		// Read one of at most two distinct inactive values.
-		//     if (seek) {
-		//         is.seekg(/*bytes=*/sizeof(ValueT), std::ios_base::cur);
-		//     } else {
-		//         is.read(reinterpret_cast<char*>(&inactiveVal0), /*bytes=*/sizeof(ValueT));
-		//     }
-		//     if (metadata == MASK_AND_TWO_INACTIVE_VALS) {
-		//         // Read the second of two distinct inactive values.
-		//         if (seek) {
-		//             is.seekg(/*bytes=*/sizeof(ValueT), std::ios_base::cur);
-		//         } else {
-		//             is.read(reinterpret_cast<char*>(&inactiveVal1), /*bytes=*/sizeof(ValueT));
-		//         }
-		//     }
-		assert(false);
+	if (metadata == EASYVDB_NO_MASK_AND_ONE_INACTIVE_VAL || metadata == EASYVDB_MASK_AND_ONE_INACTIVE_VAL || metadata == EASYVDB_MASK_AND_TWO_INACTIVE_VALS)
+	{
+		std::cout << "[WARN] Unsupported: Different inactive values behavior" << std::endl;
+		// https://github.com/AcademySoftwareFoundation/openvdb/blob/5201109680912e0f8333971dfabd33c13655b314/openvdb/openvdb/io/Compression.h#L513
 	}
 
-	selectionMask = Mask(numValues);
-	if (metadata == NodeMetaData::MaskAndNoInactiveVals || metadata == NodeMetaData::MaskAndOneInactiveVal || metadata == NodeMetaData::MaskAndTwoInactiveVals) {
-		selectionMask.read(this);
+	this->selectionMask = Mask(this->numValues);
+	// For use in mask compression (only), read the bitmask that selects between two distinct inactive values
+	if (metadata == EASYVDB_MASK_AND_NO_INACTIVE_VALS || metadata == EASYVDB_MASK_AND_ONE_INACTIVE_VAL || metadata == EASYVDB_MASK_AND_TWO_INACTIVE_VALS) {
+		this->selectionMask.read(this);
 	}
 
 	unsigned int tempCount = destCount;
-	std::vector<float> tempBuf = this->values;
+	std::vector<float> tempBuf = std::vector<float>(this->numValues);
 
-	if (useCompression && metadata != NodeMetaData::NoMaskAndAllVals && *(sharedContext->version) >= OPENVDB_FILE_VERSION_NODE_MASK_COMPRESSION) {
-		tempCount = valueMask.countOn();
-		if (tempCount != destCount) { // todo: add !seek in the condition
-			// If this node has inactive voxels, allocate a temporary buffer into which to read just the active values.
+	if (this->useCompression && metadata != EASYVDB_NO_MASK_AND_ALL_VALS && *(this->sharedContext->version) >= OPENVDB_FILE_VERSION_NODE_MASK_COMPRESSION) {
+		tempCount = this->valueMask.countOn();
+		// If this node has inactive voxels, allocate a temporary buffer into which to read just the active values.
+		if (tempCount != destCount) {
 			tempBuf.resize(tempCount);
 		}
 	}
 
-	this->values = std::vector<float>(this->numValues);
-	readData(seek, offset, num_indices, tempCount, this->values); // read value array of nodes 5-4
+	// Read in the buffer
+	readData(tempCount, tempBuf); // read value array of nodes 5-4
 
-	// https://github.com/AcademySoftwareFoundation/openvdb/blob/aea0f0e022141a32fee66378d1fee53b3a3fbc2e/openvdb/openvdb/io/Compression.h#L569
-	// If mask compression is enabled and the number of active values read into the temp buffer is
+	// If mask compression is enabled and the number of active values read into the temp buffer is 
 	// smaller than the size of the destination buffer, then there are missing (inactive) values
-	if (useCompression && tempCount != destCount) {
-		// ref: https://github.com/Traverse-Research/vdb-rs/blob/f146fc083a2df19da555b1c976ed8cd6b5498748/src/reader.rs#L369
-		this->values.resize(numValues);
-		// Restore inactive values, using the background value and, if available,
-		// the inside/outside mask. (For fog volumes, the destination buffer is assumed
-		// to be initialized to background value zero, so inactive values can be ignored.)
-		for (int32_t destIdx = 0, tempIdx = 0; destIdx < this->childMask.size; destIdx++)
-		{
-			if (valueMask.isOn(destIdx)) {
+	if (this->useCompression && tempCount != destCount)
+	{
+		// Restore inactive values, using the background value and, if available, the inside/outside mask. 
+		// (For fog volumes, the destination buffer is assumed to be initialized to background value zero, so inactive values can be ignored.)
+		for (int32_t destIdx = 0, tempIdx = 0; destIdx < this->valueMask.size; destIdx++) {
+			if (this->valueMask.isOn(destIdx)) {
 				// Copy a saved active value into this node's buffer.
-				this->values[destIdx] = tempBuf[tempIdx];
+				destBuffer[destIdx] = tempBuf[tempIdx];
 				tempIdx++;
 			}
 			else {
 				// Reconstruct an unsaved inactive value and copy it into this node's buffer
-				this->values[destIdx] = selectionMask.isOn(destIdx) ? inactiveVal1 : inactiveVal0;
+				destBuffer[destIdx] = (this->selectionMask.size > 0 && this->selectionMask.isOn(destIdx)) ? inactiveVal1 : inactiveVal0;
 			}
 		}
 	}
 
-	// In case we have a leaf here, end the function
-	if (childMask.countOn() == 0) {
-		return;
-	}
-
-	// Iterate recursively for all the children nodes
-	for (unsigned int j = 0; j < childMask.onIndexCache.size(); j++) {
-		if (childMask.onIndexCache[j]) {
-			int offset = j;
-
-			int n = offset;
-			int x = n >> (2 * log2dim);
-			n &= (1 << (2 * log2dim)) - 1;
-			int y = n >> log2dim;
-			int z = n & ((1 << log2dim) - 1);
-			glm::vec3 vec(x, y, z);
-
-			InternalNode* child = new InternalNode();
-			child->sharedContext = sharedContext;
-			child->parent = this;
-			child->read(offset, vec, background, depth + 1);
-
-			child->origin.x = (int)vec.x << child->total;
-			child->origin.y = (int)vec.y << child->total;
-			child->origin.z = (int)vec.z << child->total;
-
-			table[offset] = child;
-			leavesCount += child->leavesCount;
-
-			if (firstChild == nullptr) {
-				firstChild = child;
-			}
-		}
-	}
+	return EASYVDB_SUCCESS;
 }
 
-void InternalNode::readData(const bool seek, uint32_t offset, uint32_t num_indices, unsigned int tempCount, std::vector<float>& outArray)
+ErrorCode InternalNode::readData(unsigned int tempCount, std::vector<float>& outArray)
 {
-	if (sharedContext->useHalf) {
-		if (tempCount < 1) return;
+	if (sharedContext->useHalf && tempCount < 1) {
+		return EASYVDB_SUCCESS;
 	}
 
-	/*if (!seek) {
-		std::cout << "TO DO: seek" << std::endl;
-		assert(false);
-	}*/
-
-	if (this->sharedContext->useDelayedLoadMeta && seek && useCompression) {
+	if (this->sharedContext->useDelayedLoadMeta && this->useCompression && false) { // only if seek, remove (?)
 		// to do: optimize
-		std::string delayLoadMeta = this->sharedContext->delayedLoadMeta;
+		uint32_t& offset_ref = this->sharedContext->delayedMetada.offset;
+		uint32_t& num_indices_ref = this->sharedContext->delayedMetada.num_indices;
+		std::string& metadata_string_ref = this->sharedContext->delayedMetada.metadata_string;
 
-		uint32_t mCompressedSize_length = static_cast<uint8_t>(delayLoadMeta[offset++]); // length of compressed mCompressedSize vector ()
-		mCompressedSize_length |= static_cast<uint8_t>(delayLoadMeta[offset++]) << 8;
-		mCompressedSize_length |= static_cast<uint8_t>(delayLoadMeta[offset++]) << 16;
-		mCompressedSize_length |= static_cast<uint8_t>(delayLoadMeta[offset++]) << 24;
+		uint32_t mCompressedSize_length = static_cast<uint8_t>(metadata_string_ref[offset_ref++]); // length of compressed mCompressedSize vector ()
+		mCompressedSize_length |= static_cast<uint8_t>(metadata_string_ref[offset_ref++]) << 8;
+		mCompressedSize_length |= static_cast<uint8_t>(metadata_string_ref[offset_ref++]) << 16;
+		mCompressedSize_length |= static_cast<uint8_t>(metadata_string_ref[offset_ref++]) << 24;
 
 		if (mCompressedSize_length == 0x7FFFFFFF) { // there is no compressedSize info (check)
 			// to do maybe
 			std::cout << "Unsupported" << std::endl;
 			assert(false);
-		} 
+		}
 		else if (mCompressedSize_length == 0) {
 			std::cout << "Unsupported" << std::endl;
 			assert(false);
 		}
 
-		uint8_t* tempCompressedSize = new uint8_t[num_indices * sizeof(int64_t)];
-		uint8_t* compressedArray = reinterpret_cast<uint8_t*> (delayLoadMeta.data()) + offset;
-		uncompressBlosc(mCompressedSize_length, compressedArray, num_indices * sizeof(int64_t), tempCompressedSize);
+		uint8_t* tempCompressedSize = new uint8_t[num_indices_ref * sizeof(int64_t)];
+		uint8_t* compressedArray = reinterpret_cast<uint8_t*> (metadata_string_ref.data()) + offset_ref;
+		uncompressBlosc(mCompressedSize_length, compressedArray, num_indices_ref * sizeof(int64_t), tempCompressedSize);
 		int64_t* mCompressedSize = reinterpret_cast<int64_t*>(tempCompressedSize);
 
 		// size_t compressedSize = metadata->getCompressedSize(metadataOffset);
-		int64_t compressedSize = mCompressedSize[0]; // leafIndex = 0
+		int64_t compressedSize = mCompressedSize[this->sharedContext->delayedMetada.leafIndex];
 
 		sharedContext->bufferIterator->readBytes(compressedSize); // skip compressedSize bytes
 	}
-	else if (sharedContext->compression.blosc) {
-		readCompressedData("blosc", outArray);
+	else if (this->sharedContext->compression.blosc) {
+		return readCompressedData("blosc", outArray);
 	}
-	else if (sharedContext->compression.zlib) {
-		readCompressedData("zlib", outArray);
-	}
-	else if (seek) {
-		PrecisionLUT precisionLUT = sharedContext->bufferIterator->floatingPointPrecisionLUT(sharedContext->useHalf ? getPrecisionIdx("half") : sharedContext->valueType);
-		sharedContext->bufferIterator->readBytes(precisionLUT.size * tempCount); // skip as much bytes as size * length of data type
+	else if (this->sharedContext->compression.zlib) {
+		return readCompressedData("zlib", outArray);
 	}
 	else {
 		for (unsigned int i = 0; i < tempCount; i++) {
-			outArray[i] = sharedContext->bufferIterator->readFloat(sharedContext->useHalf ? getPrecisionIdx("half") : sharedContext->valueType);
+			outArray[i] = this->sharedContext->bufferIterator->readFloat(this->sharedContext->useHalf ? getPrecisionIdx("half") : this->sharedContext->valueType);
 		}
 	}
+
+	return EASYVDB_SUCCESS;
 }
 
-void InternalNode::readCompressedData(std::string codec, std::vector<float> &outArray)
+ErrorCode InternalNode::readCompressedData(std::string codec, std::vector<float> &outArray)
 {
 	long long compressedBytesCount = sharedContext->bufferIterator->readBytes(8);
 
@@ -407,6 +389,7 @@ void InternalNode::readCompressedData(std::string codec, std::vector<float> &out
 		}
 		else {
 			std::cout << "[WARN] Unsupported compression codec: " << codec << std::endl;
+			return EASYVDB_UNKNOWN_COMPRESSION;
 		}
 
 		// join bytes depending on the value type
@@ -430,9 +413,11 @@ void InternalNode::readCompressedData(std::string codec, std::vector<float> &out
 			}
 			default:
 				std::cout << "[WARN] Cannot decompress. Unknown out type for the values." << std::endl;
-				break;
+				return EASYVDB_UNKNOWN_VALUE_TYPE;
 		}
 	}
+
+	return EASYVDB_SUCCESS;
 }
 
 glm::vec3 InternalNode::traverseOffset(InternalNode* node)
@@ -497,7 +482,7 @@ float InternalNode::getValue(glm::ivec3 pos, Accessor* accessor)
 	}
 
 	if (isLeaf()) {
-		//return this->valueMask.isOn(this->coordToOffset(pos)) ? 1.0 : 0.0; // old, this reads the mask instead of the correct voxel value
+		//return this->valueMask.isOn(this->coordToOffset(pos)) ? 1.0 : 0.0; // old, this reads the mask instead of the correct voxel value (useful to test topology)
 		
 		// reads the tree data, if voxel is not activated, return 0 as value
 		int offsetPos = this->coordToOffset(pos);
