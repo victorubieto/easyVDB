@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.9)
+cmake_minimum_required(VERSION 3.15)
 
 project(easyVDB VERSION 1.0.0 LANGUAGES CXX)
 
@@ -45,10 +45,10 @@ set(BUILD_TESTS OFF CACHE BOOL "")
 set(BUILD_SHARED OFF CACHE BOOL "")
 set(BUILD_FUZZERS OFF CACHE BOOL "")
 set(BUILD_BENCHMARKS OFF CACHE BOOL "")
-set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 add_subdirectory(libraries/c-blosc)
 target_link_libraries(${PROJECT_NAME} PUBLIC blosc_static)
 set_property(TARGET blosc_static PROPERTY FOLDER "External/blosc")
+target_compile_options(blosc_static PRIVATE "-w") # ignore blosc compiler warnings
 
 # glm
 if (NOT TARGET glm)

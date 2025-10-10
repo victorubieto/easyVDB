@@ -109,13 +109,13 @@ bool OpenVDBReader::read(std::string file_path)
 
 bool OpenVDBReader::isValidFile()
 {
-	unsigned int magic = bufferIterator->readBytes(uint64Size);
+	long long magic = bufferIterator->readBytes(uint64Size);
 	return 0x56444220 == magic;
 }
 
 bool OpenVDBReader::readFileVersion()
 {
-	fileVersion.version = bufferIterator->readBytes(uint32Size);
+	fileVersion.version = static_cast<unsigned int>(bufferIterator->readBytes(uint32Size));
 
 	if (fileVersion.version < OPENVDB_MIN_SUPPORTED_VERSION) {
 		std::cout << "[INFO] Version '" << fileVersion.version << "' is not supported. The oldest supported version is the '" << OPENVDB_MIN_SUPPORTED_VERSION << "'" << std::endl;
@@ -123,8 +123,8 @@ bool OpenVDBReader::readFileVersion()
 	}
 
 	// Stored from 211 onward, our minimum supported version is 213
-	fileVersion.major = bufferIterator->readBytes(uint32Size);
-	fileVersion.minor = bufferIterator->readBytes(uint32Size);
+	fileVersion.major = static_cast<unsigned int>(bufferIterator->readBytes(uint32Size));
+	fileVersion.minor = static_cast<unsigned int>(bufferIterator->readBytes(uint32Size));
 	
 	return true;
 }
@@ -135,7 +135,7 @@ bool OpenVDBReader::readHeader()
 	hasGridOffsets = bufferIterator->readBytes(charSize);
 
 	if (fileVersion.version >= OPENVDB_FILE_VERSION_SELECTIVE_COMPRESSION && fileVersion.version < OPENVDB_FILE_VERSION_NODE_MASK_COMPRESSION) {
-		unsigned int compress = bufferIterator->readBytes(charSize);
+		unsigned char compress = static_cast<unsigned char>(bufferIterator->readBytes(charSize));
 		compression.none = compress & 0x0;
 		compression.zlib = compress & 0x1;
 		compression.activeMask = compress & 0x2;
@@ -153,11 +153,11 @@ bool OpenVDBReader::readHeader()
 	// The extra 4 bytes are for the hyphens (-)
 	std::string uuid = "";
 	for (int i = 0; i < 36; i++) {
-		uuid += bufferIterator->readBytes(1);
+		uuid += static_cast<char>(bufferIterator->readBytes(1));
 	}
 
-	unsigned int metadataSize = bufferIterator->readBytes(uint32Size);
-	for (int i = 0; i < metadataSize; i++) {
+	unsigned int metadataSize = static_cast<unsigned int>(bufferIterator->readBytes(uint32Size));
+	for (unsigned int i = 0; i < metadataSize; i++) {
 		std::string name = bufferIterator->readString();
 		std::string type = bufferIterator->readString();
 		std::string value = bufferIterator->readString(type);
@@ -176,7 +176,7 @@ bool OpenVDBReader::readGrids()
 		std::cout << "[WARN] Unsupported: VDB without grid offsets" << std::endl;
 	}
 	else {
-		unsigned int gridCount = bufferIterator->readBytes(uint32Size);
+		unsigned int gridCount = static_cast<unsigned int>(bufferIterator->readBytes(uint32Size));
 		gridsSize = gridCount;
 		grids = new Grid[gridCount];
 

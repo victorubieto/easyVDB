@@ -23,7 +23,7 @@ void Grid::read()
 	readHeader();
 
 	if (gridBufferPosition != sharedContext->bufferIterator->offset) {
-		sharedContext->bufferIterator->offset = gridBufferPosition; // seek to grid
+		sharedContext->bufferIterator->offset = static_cast<unsigned int>(gridBufferPosition); // seek to grid
 	}
 
 	// Read grid interval
@@ -49,7 +49,7 @@ void Grid::read()
 	}
 
 	// Hack to make multi - grid VDBs work without reading leaf values
-	sharedContext->bufferIterator->offset = endBufferPosition;
+	sharedContext->bufferIterator->offset = static_cast<unsigned int>(endBufferPosition);
 }
 
 void Grid::readHeader()
@@ -60,7 +60,7 @@ void Grid::readHeader()
 	if (gridType.find(halfFloatGridPrefix) != -1) {
 		// TODO in case it contains half floats
 		saveAsHalfFloat = true;
-		char* ptr;
+		//char* ptr;
 		//ptr = strtok((char*)gridType.data(), halfFloatGridPrefix.data());
 		//gridType = gridType.split(halfFloatGridPrefix).join("");
 	}
@@ -83,7 +83,7 @@ void Grid::readHeader()
 void Grid::readCompression()
 {
 	if (*(sharedContext->version) >= OPENVDB_FILE_VERSION_NODE_MASK_COMPRESSION) {
-		unsigned int compress = sharedContext->bufferIterator->readBytes(uint32Size);
+		unsigned int compress = static_cast<unsigned int>(sharedContext->bufferIterator->readBytes(uint32Size));
 		sharedContext->compression.none = compress & 0x0;
 		sharedContext->compression.zlib = compress & 0x1;
 		sharedContext->compression.activeMask = compress & 0x2;
@@ -97,8 +97,8 @@ void Grid::readCompression()
 
 void Grid::readMetadata()
 {
-	unsigned int metadataSize = sharedContext->bufferIterator->readBytes(uint32Size);	// 4 bytes (we will have 11 entries)
-	for (int i = 0; i < metadataSize; i++) {
+	unsigned int metadataSize = static_cast<unsigned int>(sharedContext->bufferIterator->readBytes(uint32Size));	// 4 bytes (we will have 11 entries)
+	for (unsigned int i = 0; i < metadataSize; i++) {
 		std::string name = sharedContext->bufferIterator->readString();					// 9 + 17 + 17 + 20 + 21 + 18 + 20 + 26 + 8 + 19 + 12 = 187 bytes
 		std::string type = sharedContext->bufferIterator->readString();					// 10 + 9 + 9 + 10 + 17 + 9 + 9 + 8 + 10 + 9 + 9 = 109 bytes
 		std::string value = sharedContext->bufferIterator->readString(type);			// 11 + 16 + 16 + 25 + 43151 + 12 + 12 + 5 + 11 + 8 + 8 = 43275 bytes
@@ -114,7 +114,7 @@ void Grid::readMetadata()
 
 	// todo check
 	if (*(sharedContext->version) < 219u) {
-		for (int i = 0; i < metadataSize; i++) {
+		for (unsigned int i = 0; i < metadataSize; i++) {
 			if (metadata[i].name == "name")
 				metadata[i].value = gridName;
 		}
@@ -172,7 +172,7 @@ void Grid::readTopology() // in implosion vdb here we are in offset 43885
 	sharedContext->useHalf = saveAsHalfFloat;
 	sharedContext->valueType = getGridValueType();
 
-	unsigned int topologyBufferCount = sharedContext->bufferIterator->readBytes(uint32Size); // 4 bytes
+	unsigned int topologyBufferCount = static_cast<unsigned int>(sharedContext->bufferIterator->readBytes(uint32Size)); // 4 bytes
 	if (topologyBufferCount != 1) {
 		// NOTE https://github.com/AcademySoftwareFoundation/openvdb/blob/master/openvdb/openvdb/tree/Tree.h#L1120
 		std::cout << "[WARN] Unsupported: Multi-buffer trees" << std::endl;

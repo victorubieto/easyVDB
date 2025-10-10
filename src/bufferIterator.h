@@ -77,7 +77,7 @@ namespace easyVDB
 	public:
 		// buffer data management
 		std::vector<uint8_t>& rawBuffer;
-		unsigned int offset;
+		unsigned int offset = 0;
 
 		BufferIterator(std::vector<uint8_t>& source, unsigned int offset = 0u);
 
@@ -95,10 +95,10 @@ namespace easyVDB
 	};
 
 	struct Compression {
-		bool none;
-		bool zlib;
-		bool activeMask;
-		bool blosc;
+		bool none = false;
+		bool zlib = false;
+		bool activeMask = false;
+		bool blosc = false;
 	};
 
 	struct DelayedLoadMetadata {
@@ -112,11 +112,11 @@ namespace easyVDB
 	struct SharedContext {
 		Compression compression;
 		Precision valueType;
-		bool useHalf;
-		bool useDelayedLoadMeta;
+		bool useHalf = false;
+		bool useDelayedLoadMeta = false;
 		DelayedLoadMetadata delayedMetada;
-		BufferIterator* bufferIterator;
-		unsigned int* version;
+		BufferIterator* bufferIterator = nullptr;
+		unsigned int* version = nullptr;
 	};
 
 	struct Metadata {
