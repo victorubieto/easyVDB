@@ -12,11 +12,11 @@ namespace easyVDB
 	class Mask {
 	public:
 
-		InternalNode* targetNode;
+		InternalNode* targetNode = nullptr;
 
-		int size;
-		int onCache;
-		int offCache;
+		int size = 0;
+		int onCache = 0;
+		int offCache = 0;
 
 		std::vector<std::string> words;
 		std::vector<uint8_t> onIndexCache; // this is a bool list

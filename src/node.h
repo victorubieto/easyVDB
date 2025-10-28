@@ -15,30 +15,30 @@ namespace easyVDB
 
 	class InternalNode {
 	public:
-		SharedContext* sharedContext;
+		SharedContext* sharedContext = nullptr;
 
 		unsigned int log2dimMap[3] = { 5, 4, 3 };
 		unsigned int totalMap[3] = { 4, 3, 0 };
 		std::string nodeTypeMap[3] = { "internal", "internal", "leaf" };
 
-		unsigned int leavesCount;
+		unsigned int leavesCount = 0;
 
-		unsigned int depth;
-		unsigned int id;
-		glm::vec3 origin;
-		float background;
-		int total;
-		unsigned int dim;
-		int offsetMask;
+		unsigned int depth = 0;
+		unsigned int id = 0;
+		glm::vec3 origin = {};
+		float background = 0.0f;
+		int total = 0;
+		unsigned int dim = 0;
+		int offsetMask = 0;
 
-		unsigned int log2dim;
-		int numValues;
+		unsigned int log2dim = 0;
+		int numValues = 0;
 
-		bool bboxInitialized;
+		bool bboxInitialized = 0;
 		Bbox localBbox;
 
-		bool oldVersion;
-		bool useCompression;
+		bool oldVersion = false;
+		bool useCompression = false;
 
 		std::vector<InternalNode*> table;
 
@@ -49,8 +49,8 @@ namespace easyVDB
 		std::vector<float> values; // node 5-4
 		std::vector<float> data; // node 3
 
-		InternalNode* parent;
-		InternalNode* firstChild;
+		InternalNode* parent = nullptr;
+		InternalNode* firstChild = nullptr;
 
 		InternalNode();
 
@@ -69,13 +69,13 @@ namespace easyVDB
 
 	class RootNode {
 	public:
-		SharedContext* sharedContext;
+		SharedContext* sharedContext = nullptr;
 
-		unsigned int leavesCount;
+		unsigned int leavesCount = 0;
 
-		float background;
-		unsigned int numTiles;
-		unsigned int numChildren;
+		float background = 0.0f;
+		unsigned int numTiles = 0;
+		unsigned int numChildren = 0;
 		glm::vec3 origin;
 
 		std::vector<InternalNode> table; // ?

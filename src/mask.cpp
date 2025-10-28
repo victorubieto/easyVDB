@@ -36,11 +36,11 @@ void Mask::read(InternalNode* node)
 
 	int dim = 1 << targetNode->log2dim;
 	this->size = 1 << (3 * targetNode->log2dim);
-	int wordCount = this->size >> 6;
+	unsigned int wordCount = this->size >> 6;
 
 	onIndexCache.resize(wordCount * 64);
 	for (unsigned int i = 0; i < wordCount * 64; i += 8) {
-		unsigned int byte = targetNode->sharedContext->bufferIterator->readBytes(1);
+		unsigned int byte = static_cast<unsigned int>(targetNode->sharedContext->bufferIterator->readBytes(1));
 		// reverse and "push" to onIndexCache mask 
 		for (unsigned int k = 0; k < 8; k++) {
 			onIndexCache[i+k] = (byte & 0x01);
@@ -62,8 +62,8 @@ int Mask::countOn()
 		return onCache;
 	}
 
-	unsigned int count = 0;
-	count = std::count(onIndexCache.begin(), onIndexCache.end(), true);
+	int count = 0;
+	count = static_cast<int>(std::count(onIndexCache.begin(), onIndexCache.end(), 1));
 
 	return count;
 }

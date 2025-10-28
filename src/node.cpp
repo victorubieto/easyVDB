@@ -20,8 +20,8 @@ RootNode::RootNode()
 void RootNode::read()
 {
 	background = sharedContext->bufferIterator->readFloat(floatType); // always read background as float, even if the data is stored as half floats
-	numTiles = sharedContext->bufferIterator->readBytes(uint32Size);
-	numChildren = sharedContext->bufferIterator->readBytes(uint32Size);
+	numTiles = static_cast<unsigned int>(sharedContext->bufferIterator->readBytes(uint32Size));
+	numChildren = static_cast<unsigned int>(sharedContext->bufferIterator->readBytes(uint32Size));
 	// init table
 	origin = glm::vec3(0.0f);
 
@@ -79,7 +79,7 @@ float RootNode::getValue(glm::ivec3 pos, Accessor* accessor)
 {
 	float max = 0.0;
 
-	for (unsigned int i = 0; i < this->table.size(); i++) {
+	for (size_t i = 0; i < this->table.size(); i++) {
 		max = std::max(max, this->table[i].getValue(pos, accessor));
 
 		if (max != 0.0) {
@@ -189,9 +189,9 @@ void InternalNode::readTopology(unsigned int _id, glm::vec3 _origin, float _back
 				child->parent = this;
 				child->readTopology(offset, vec, background, depth + 1);
 
-				child->origin.x = (int)vec.x << child->total;
-				child->origin.y = (int)vec.y << child->total;
-				child->origin.z = (int)vec.z << child->total;
+				child->origin.x = static_cast<float>((int)vec.x << child->total);
+				child->origin.y = static_cast<float>((int)vec.y << child->total);
+				child->origin.z = static_cast<float>((int)vec.z << child->total);
 
 				this->table[offset] = child;
 				this->leavesCount += child->leavesCount;
@@ -246,7 +246,7 @@ ErrorCode InternalNode::readValues(std::vector<float>& destBuffer, int destCount
 			this->sharedContext->bufferIterator->readBytes(1u);
 		}
 		else {
-			metadata = this->sharedContext->bufferIterator->readBytes(1u); // read 1 byte
+			metadata = static_cast<unsigned int>(this->sharedContext->bufferIterator->readBytes(1u)); // read 1 byte
 		}
 	}
 
@@ -336,7 +336,7 @@ ErrorCode InternalNode::readData(unsigned int tempCount, std::vector<float>& out
 		// size_t compressedSize = metadata->getCompressedSize(metadataOffset);
 		int64_t compressedSize = mCompressedSize[this->sharedContext->delayedMetada.leafIndex];
 
-		sharedContext->bufferIterator->readBytes(compressedSize); // skip compressedSize bytes
+		sharedContext->bufferIterator->readBytes(static_cast<unsigned int>(compressedSize)); // skip compressedSize bytes
 	}
 	else if (this->sharedContext->compression.blosc) {
 		return readCompressedData("blosc", outArray);
@@ -363,18 +363,18 @@ ErrorCode InternalNode::readCompressedData(std::string codec, std::vector<float>
 
 		if (sharedContext->useHalf)
 		{
-			for (int i = 0; i < -compressedBytesCount; i += s) {
+			for (long long i = 0; i < -compressedBytesCount; i += s) {
 				outArray[i] = sharedContext->bufferIterator->readFloat(getPrecisionIdx("half"));
 			}
 		}
 		else {
-			for (int i = 0; i < -compressedBytesCount; i += s) {
+			for (long long i = 0; i < -compressedBytesCount; i += s) {
 				outArray[i] = sharedContext->bufferIterator->readFloat(sharedContext->valueType);
 			}
 		}
 	}
 	else {
-		uint8_t* compressedBytes = sharedContext->bufferIterator->readRawBytes(compressedBytesCount);
+		uint8_t* compressedBytes = sharedContext->bufferIterator->readRawBytes(static_cast<unsigned int>(compressedBytesCount));
 		uint8_t* decompressedBytes{ 0 };
 
 		int valueTypeLength = sharedContext->bufferIterator->floatingPointPrecisionLUT(sharedContext->valueType).size;

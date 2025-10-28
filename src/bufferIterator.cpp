@@ -87,6 +87,9 @@ long long BufferIterator::readInt(unsigned int precision)
 
 		return val;
 	}
+
+	assert(0);
+	return 0;
 }
 
 float BufferIterator::readFloat(unsigned int precision)
@@ -108,24 +111,24 @@ float BufferIterator::readFloat(unsigned int precision)
 
 		std::string binary = "";
 		for (unsigned int i = 0u; i < precisionLUT.size; i++) {
-			unsigned int bin = readBytes(charSize);
+			unsigned int bin = static_cast<unsigned int>(readBytes(charSize));
 			std::string s = std::bitset< 8 >(bin).to_string();
 			binary = s + binary;
 		}
 
 		// NOTE https://stackoverflow.com/questions/37022434/how-do-i-parse-a-twos-complement-string-to-a-number
 		// also this https://stackoverflow.com/questions/29931827/stoi-causes-out-of-range-error
-		return (int)~~std::stoll(binary, nullptr, 2);
+		return static_cast<float>((int)~~std::stoll(binary, nullptr, 2));
 	}
 	else if (precision == halfFloatType)
 	{
-		unsigned short raw = readBytes(charSize);
+		unsigned short raw = static_cast<unsigned short>(readBytes(charSize));
 		raw |= static_cast<unsigned short>(readBytes(charSize)) << 8;
 		return half_to_float(raw);
 	}
 	else if (precision == floatType)
 	{
-		unsigned int raw = readBytes(charSize);
+		unsigned int raw = static_cast<unsigned int>(readBytes(charSize));
 		raw |= static_cast<unsigned short>(readBytes(charSize)) << 8;
 		raw |= static_cast<unsigned short>(readBytes(charSize)) << 16;
 		raw |= static_cast<unsigned short>(readBytes(charSize)) << 24;
@@ -150,7 +153,7 @@ float BufferIterator::readFloat(unsigned int precision)
 
 		std::string binary = "";
 		for (unsigned int i = 0u; i < precisionLUT.size; i++) {
-			unsigned int bin = readBytes(charSize);
+			unsigned int bin = static_cast<unsigned int>(readBytes(charSize));
 			std::string s = std::bitset< 8 >(bin).to_string();
 			binary = s + binary;
 		}
@@ -182,23 +185,26 @@ float BufferIterator::readFloat(unsigned int precision)
 		{
 			v2_seglist.push_back(aux3_v2_string);
 		}
-		int v2_len = (v2_seglist.size() > 1 ? v2_seglist[1] : std::string("")).size();
+		size_t v2_len = (v2_seglist.size() > 1 ? v2_seglist[1] : std::string("")).size();
 		double v2_len_p2 = pow(2, v2_len);
-		double v2_toNumber = std::stoll(aux2_v2_string, nullptr, 2);
-		double v2 = v2_toNumber / v2_len_p2;
+		long long v2_toNumber = std::stoll(aux2_v2_string, nullptr, 2);
+		double v2 = static_cast<double>(v2_toNumber) / v2_len_p2;
 		//
 
 		if (v1 == 0 && v2 == 0) {
 			return 0;
 		}
 
-		return sign * (v1 + v2);
+		return static_cast<float>(sign * (v1 + v2));
 	}
+
+	assert(0);
+	return 0.0f;
 }
 
 std::string BufferIterator::readString(unsigned int castTo)
 {
-	unsigned int nameSize = readBytes(uint32Size);
+	unsigned int nameSize = static_cast<unsigned int>(readBytes(uint32Size));
 	std::string name = "";
 
 	if (castTo == int64Type) {
@@ -227,7 +233,7 @@ std::string BufferIterator::readString(unsigned int castTo)
 	}
 	else {
 		for (unsigned int i = 0; i < nameSize; i++) {
-			name += readBytes(charSize);
+			name += static_cast<char>((readBytes(charSize)));
 		}
 	}
 
@@ -236,7 +242,7 @@ std::string BufferIterator::readString(unsigned int castTo)
 
 std::string BufferIterator::readString(std::string castTo)
 {
-	unsigned int nameSize = readBytes(uint32Size);
+	unsigned int nameSize = static_cast<unsigned int>(readBytes(uint32Size));
 	std::string name = "";
 
 	if (castTo == getPrecisionString(int32Type)) {
@@ -268,7 +274,7 @@ std::string BufferIterator::readString(std::string castTo)
 	}
 	else {
 		for (unsigned int i = 0; i < nameSize; i++) {
-			name += readBytes(charSize);
+			name += static_cast<char>(readBytes(charSize));
 		}
 	}
 

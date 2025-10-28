@@ -61,7 +61,6 @@ namespace easyVDB
 		};
 
 		void applyInverseTransformMap(glm::vec3& vector) {
-			glm::vec3 result;
 			if (this->mapType == uniformScaleTranslateMap || this->mapType == scaleTranslateMap) {
 				vector = vector * this->scaleInverse;
 			}
@@ -93,9 +92,9 @@ namespace easyVDB
 
 	class Grid {
 	public:
-		SharedContext* sharedContext;
+		SharedContext* sharedContext = nullptr;
 
-		Accessor* accessor;
+		Accessor* accessor = nullptr;
 
 		std::string halfFloatGridPrefix = "_HalfFloat";
 
@@ -108,14 +107,14 @@ namespace easyVDB
 		std::string gridName;
 		std::string gridType;
 
-		long long gridBufferPosition;
-		long long blockBufferPosition;
-		long long endBufferPosition;
+		long long gridBufferPosition = 0;
+		long long blockBufferPosition = 0;
+		long long endBufferPosition = 0;
 
 		//Compression compression;
 		std::vector<Metadata> metadata;
 
-		VDB_Transform* transform;
+		VDB_Transform* transform = nullptr;
 
 		RootNode root;
 
