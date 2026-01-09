@@ -1,6 +1,7 @@
 #pragma once
 
 #include <iostream>
+#include <cstring>
 
 // External compression libs
 #include "../libraries/zlib/zlib.h"
