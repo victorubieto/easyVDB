@@ -7,7 +7,7 @@
 #include <glm/vec3.hpp>
 #include <glm/common.hpp>
 
-#include "bufferiterator.h"
+#include "bufferIterator.h"
 #include "node.h"
 //#include "bbox.h"
 

@@ -1,6 +1,7 @@
 #include "mask.h"
 
 #include <string>
+#include <cstring>
 #include <vector>
 #include <bitset>
 
